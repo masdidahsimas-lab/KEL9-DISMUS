@@ -68,3 +68,9 @@ class Karyawan extends Pengguna {
 }
 
 module.exports = Karyawan;
+// Buat objek Karyawan baru
+const karyawan1 = new Karyawan("Budi", "K001");
+
+// Tes cetak ke terminal
+console.log("=== TES KARYAWAN ===");
+console.log(karyawan1);
