@@ -24,4 +24,4 @@ class StokBahanBaku {
   }
 }
 
-module.exports = StokBahanBaku;
+ module.exports = StokBahanBaku;

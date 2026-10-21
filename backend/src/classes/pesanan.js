@@ -33,4 +33,4 @@ class Pesanan {
   }
 }
 
-module.exports = Pesanan;
+ module.exports = Pesanan;
