@@ -1,0 +1,24 @@
+{
+  "name": "prak-ipsi",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/masdidahsimas-lab/KEL9-DISMUS.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/masdidahsimas-lab/KEL9-DISMUS/issues"
+  },
+  "homepage": "https://github.com/masdidahsimas-lab/KEL9-DISMUS#readme",
+  "dependencies": {
+    "express": "^5.3.0"
+  }
+}
