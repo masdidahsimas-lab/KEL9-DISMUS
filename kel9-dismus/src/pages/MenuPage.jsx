@@ -1,15 +1,26 @@
+
 import { useMemo, useState } from "react";
-import { Plus, Search, Edit3, Trash2, Coffee, LoaderCircle } from "lucide-react";
+import {
+  Plus,
+  Search,
+  Edit3,
+  Trash2,
+  Coffee,
+  LoaderCircle,
+} from "lucide-react";
 import { Button, Field, inputClass } from "../components/Modal";
 import Modal from "../components/Modal";
 import EmptyState from "../components/EmptyState";
 import { rupiah } from "../utils/format";
+import { saveMenu, deleteMenu } from "../services/menuService";
 
-export default function MenuPage({ menus, onRefresh, onError, onMessage }) {
+export default function MenuPage({ menus = [], onRefresh, onError, onMessage }) {
   const [query, setQuery] = useState("");
   const [modal, setModal] = useState(false);
   const [edit, setEdit] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(null);
+
   const [form, setForm] = useState({
     nama_menu: "",
     kategori: "Dimsum",
@@ -19,7 +30,12 @@ export default function MenuPage({ menus, onRefresh, onError, onMessage }) {
   });
 
   const filtered = useMemo(
-    () => menus.filter((m) => `${m.nama_menu} ${m.kategori || ""}`.toLowerCase().includes(query.toLowerCase())),
+    () =>
+      menus.filter((m) =>
+        `${m.nama_menu} ${m.kategori || ""}`
+          .toLowerCase()
+          .includes(query.toLowerCase())
+      ),
     [menus, query]
   );
 
@@ -42,51 +58,68 @@ export default function MenuPage({ menus, onRefresh, onError, onMessage }) {
             tersedia: true,
           }
     );
-    onError("");
+
+    onError?.("");
     setModal(true);
   }
 
   async function submit(e) {
     e.preventDefault();
-    setSaving(true);
 
-    const { saveMenu } = await import("../services/menuService");
-    const result = await saveMenu(
-      {
-        nama_menu: form.nama_menu.trim(),
-        kategori: form.kategori.trim() || "Lainnya",
-        harga: Number(form.harga),
-        deskripsi: form.deskripsi.trim(),
-        tersedia: form.tersedia,
-      },
-      edit?.id
-    );
-
-    setSaving(false);
-
-    if (result.error) {
-      onError(`Menu gagal disimpan: ${result.error.message}`);
+    if (!form.nama_menu.trim() || form.harga === "") {
+      onError?.("Nama menu dan harga wajib diisi.");
       return;
     }
 
-    setModal(false);
-    onMessage(edit ? "Menu berhasil diperbarui." : "Menu berhasil ditambahkan.");
-    onRefresh();
+    if (!Number.isFinite(Number(form.harga)) || Number(form.harga) < 0) {
+      onError?.("Harga menu tidak valid.");
+      return;
+    }
+
+    try {
+      setSaving(true);
+
+      await saveMenu(
+        {
+          nama_menu: form.nama_menu.trim(),
+          kategori: form.kategori.trim() || "Lainnya",
+          harga: Number(form.harga),
+          deskripsi: form.deskripsi.trim(),
+          tersedia: form.tersedia,
+        },
+        edit?.id
+      );
+
+      setModal(false);
+      onMessage?.(
+        edit
+          ? "Menu berhasil diperbarui."
+          : "Menu berhasil ditambahkan."
+      );
+
+      await onRefresh?.();
+    } catch (error) {
+      onError?.(`Menu gagal disimpan: ${error.message}`);
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function remove(item) {
-    if (!confirm(`Hapus menu "${item.nama_menu}"?`)) return;
+    if (!window.confirm(`Hapus menu "${item.nama_menu}"?`)) return;
 
-    const { deleteMenu } = await import("../services/menuService");
-    const { error } = await deleteMenu(item.id);
+    try {
+      setDeleting(item.id);
 
-    if (error) {
-      onError(`Menu gagal dihapus: ${error.message}`);
-      return;
+      await deleteMenu(item.id);
+
+      onMessage?.("Menu berhasil dihapus.");
+      await onRefresh?.();
+    } catch (error) {
+      onError?.(`Menu gagal dihapus: ${error.message}`);
+    } finally {
+      setDeleting(null);
     }
-
-    onMessage("Menu berhasil dihapus.");
-    onRefresh();
   }
 
   return (
@@ -94,8 +127,11 @@ export default function MenuPage({ menus, onRefresh, onError, onMessage }) {
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
           <h2 className="text-2xl font-extrabold">Kelola Menu</h2>
-          <p className="mt-2 text-stone-500">Atur nama, kategori, harga, dan ketersediaan menu.</p>
+          <p className="mt-2 text-stone-500">
+            Atur nama, kategori, harga, dan ketersediaan menu.
+          </p>
         </div>
+
         <Button onClick={() => open()}>
           <Plus size={18} /> Tambah Menu
         </Button>
@@ -112,35 +148,65 @@ export default function MenuPage({ menus, onRefresh, onError, onMessage }) {
       </div>
 
       {filtered.length === 0 ? (
-        <EmptyState title="Menu belum tersedia" description="Tambahkan menu baru atau ubah pencarian." />
+        <EmptyState
+          title="Menu belum tersedia"
+          description="Tambahkan menu baru atau ubah pencarian."
+        />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {filtered.map((m) => (
-            <article key={m.id} className="rounded-2xl border border-stone-100 bg-white p-5 shadow-soft">
+            <article
+              key={m.id}
+              className="rounded-2xl border border-stone-100 bg-white p-5 shadow-soft"
+            >
               <div className="flex justify-between">
                 <div className="rounded-xl bg-brand-50 p-3 text-brand-600">
                   <Coffee />
                 </div>
+
                 <span
                   className={`h-fit rounded-full px-3 py-1.5 text-sm font-bold ${
-                    m.tersedia ? "bg-emerald-50 text-emerald-700" : "bg-stone-100 text-stone-500"
+                    m.tersedia
+                      ? "bg-emerald-50 text-emerald-700"
+                      : "bg-stone-100 text-stone-500"
                   }`}
                 >
                   {m.tersedia ? "Tersedia" : "Tidak tersedia"}
                 </span>
               </div>
 
-              <h3 className="mt-4 text-lg font-extrabold">{m.nama_menu}</h3>
-              <p className="text-sm text-stone-500">{m.kategori || "Tanpa kategori"}</p>
-              <p className="mt-3 min-h-10 text-sm leading-6 text-stone-600">{m.deskripsi || "Belum ada deskripsi."}</p>
-              <p className="mt-4 text-xl font-extrabold text-brand-700">{rupiah(m.harga)}</p>
+              <h3 className="mt-4 text-lg font-extrabold">
+                {m.nama_menu}
+              </h3>
+
+              <p className="text-sm text-stone-500">
+                {m.kategori || "Tanpa kategori"}
+              </p>
+
+              <p className="mt-3 min-h-10 text-sm leading-6 text-stone-600">
+                {m.deskripsi || "Belum ada deskripsi."}
+              </p>
+
+              <p className="mt-4 text-xl font-extrabold text-brand-700">
+                {rupiah(m.harga)}
+              </p>
 
               <div className="mt-5 flex gap-2 border-t pt-4">
                 <Button variant="secondary" onClick={() => open(m)}>
                   <Edit3 size={16} /> Edit
                 </Button>
-                <Button variant="danger" onClick={() => remove(m)}>
-                  <Trash2 size={16} /> Hapus
+
+                <Button
+                  variant="danger"
+                  disabled={deleting === m.id}
+                  onClick={() => remove(m)}
+                >
+                  {deleting === m.id ? (
+                    <LoaderCircle className="animate-spin" size={16} />
+                  ) : (
+                    <Trash2 size={16} />
+                  )}
+                  Hapus
                 </Button>
               </div>
             </article>
@@ -149,14 +215,19 @@ export default function MenuPage({ menus, onRefresh, onError, onMessage }) {
       )}
 
       {modal && (
-        <Modal title={edit ? "Edit Menu" : "Tambah Menu Baru"} onClose={() => setModal(false)}>
+        <Modal
+          title={edit ? "Edit Menu" : "Tambah Menu Baru"}
+          onClose={() => !saving && setModal(false)}
+        >
           <form onSubmit={submit} className="space-y-4">
             <Field label="Nama menu">
               <input
                 className={inputClass}
                 required
                 value={form.nama_menu}
-                onChange={(e) => setForm({ ...form, nama_menu: e.target.value })}
+                onChange={(e) =>
+                  setForm({ ...form, nama_menu: e.target.value })
+                }
               />
             </Field>
 
@@ -164,7 +235,9 @@ export default function MenuPage({ menus, onRefresh, onError, onMessage }) {
               <input
                 className={inputClass}
                 value={form.kategori}
-                onChange={(e) => setForm({ ...form, kategori: e.target.value })}
+                onChange={(e) =>
+                  setForm({ ...form, kategori: e.target.value })
+                }
               />
             </Field>
 
@@ -176,7 +249,9 @@ export default function MenuPage({ menus, onRefresh, onError, onMessage }) {
                 step="1"
                 required
                 value={form.harga}
-                onChange={(e) => setForm({ ...form, harga: e.target.value })}
+                onChange={(e) =>
+                  setForm({ ...form, harga: e.target.value })
+                }
               />
             </Field>
 
@@ -185,7 +260,9 @@ export default function MenuPage({ menus, onRefresh, onError, onMessage }) {
                 className={inputClass}
                 rows="3"
                 value={form.deskripsi}
-                onChange={(e) => setForm({ ...form, deskripsi: e.target.value })}
+                onChange={(e) =>
+                  setForm({ ...form, deskripsi: e.target.value })
+                }
               />
             </Field>
 
@@ -194,17 +271,27 @@ export default function MenuPage({ menus, onRefresh, onError, onMessage }) {
                 type="checkbox"
                 className="h-5 w-5 accent-rose-600"
                 checked={form.tersedia}
-                onChange={(e) => setForm({ ...form, tersedia: e.target.checked })}
+                onChange={(e) =>
+                  setForm({ ...form, tersedia: e.target.checked })
+                }
               />
               Menu tersedia untuk dipesan
             </label>
 
             <div className="flex justify-end gap-3">
-              <Button variant="secondary" onClick={() => setModal(false)}>
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={saving}
+                onClick={() => setModal(false)}
+              >
                 Batal
               </Button>
+
               <Button type="submit" disabled={saving}>
-                {saving && <LoaderCircle className="animate-spin" size={18} />}
+                {saving && (
+                  <LoaderCircle className="animate-spin" size={18} />
+                )}
                 Simpan Menu
               </Button>
             </div>
