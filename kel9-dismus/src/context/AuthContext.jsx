@@ -1,53 +1,94 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
 
-const AuthContext = createContext();
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
 
-export const AuthProvider = ({ children }) => {
+import {
+  getCurrentUser,
+  loginUser,
+  registerUser,
+  logoutUser,
+} from "../services/authService";
+
+const AuthContext = createContext(null);
+
+export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Ambil session saat pertama dimuat
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
+    let mounted = true;
 
-    // Mendengarkan perubahan auth state
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
+    const checkUser = async () => {
+      const { data, error } = await getCurrentUser();
 
-    return () => listener.subscription.unsubscribe();
+      if (!mounted) return;
+
+      if (error) {
+        console.error("Gagal mengambil user:", error.message);
+      }
+
+      setUser(data ?? null);
+      setLoading(false);
+    };
+
+    checkUser();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const login = async (email, password) => {
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await loginUser(email, password);
+
     if (error) throw error;
+
+    setUser(data?.user ?? null);
     return data;
   };
 
   const register = async (email, password, fullName) => {
-    const { data, error } = await supabase.auth.signUp({
+    const { data, error } = await registerUser(
       email,
       password,
-      options: { data: { full_name: fullName } }
-    });
+      fullName,
+      "pelanggan"
+    );
+
     if (error) throw error;
+
     return data;
   };
 
   const logout = async () => {
-    await supabase.auth.signOut();
+    const { error } = await logoutUser();
+
+    if (error) throw error;
+
+    setUser(null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout }}>
+    <AuthContext.Provider
+      value={{ user, loading, login, register, logout }}
+    >
       {children}
     </AuthContext.Provider>
   );
-};
+}
 
-export const useAuth = () => useContext(AuthContext);
+export function useAuth() {
+  const context = useContext(AuthContext);
+
+  if (!context) {
+    throw new Error(
+      "useAuth harus digunakan di dalam AuthProvider"
+    );
+  }
+
+  return context;
+}
