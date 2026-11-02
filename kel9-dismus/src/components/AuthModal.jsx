@@ -1,5 +1,13 @@
+
 import { useState } from "react";
-import { X, Lock, Mail, User, LoaderCircle, ShieldCheck } from "lucide-react";
+import {
+  X,
+  Lock,
+  Mail,
+  User,
+  LoaderCircle,
+  ShieldCheck,
+} from "lucide-react";
 import { loginUser, registerUser } from "../services/authService";
 
 export default function AuthModal({ open, onClose, onSuccess, onError }) {
@@ -14,29 +22,56 @@ export default function AuthModal({ open, onClose, onSuccess, onError }) {
 
   async function handleSubmit(e) {
     e.preventDefault();
+
+    if (loading) return;
+
     setLoading(true);
 
-    const res = isRegister
-      ? await registerUser(email, password, fullName, role)
-      : await loginUser(email, password);
+    try {
+      const res = isRegister
+        ? await registerUser(email.trim(), password, fullName.trim(), role)
+        : await loginUser(email.trim(), password);
 
-    setLoading(false);
+      if (res?.error) {
+        onError?.(`Autentikasi gagal: ${res.error.message}`);
+        return;
+      }
 
-    if (res.error) {
-      onError(`Autentikasi gagal: ${res.error.message}`);
-      return;
+      if (!res?.data?.user) {
+        onError?.("Autentikasi berhasil, tetapi data pengguna tidak ditemukan.");
+        return;
+      }
+
+      onSuccess?.(res.data.user);
+      onClose?.();
+    } catch (error) {
+      onError?.(
+        `Terjadi kesalahan: ${
+          error?.message || "Silakan coba kembali."
+        }`
+      );
+    } finally {
+      setLoading(false);
     }
+  }
 
-    onSuccess(res.data.user);
-    onClose();
+  function resetForm() {
+    setIsRegister(!isRegister);
+    setEmail("");
+    setPassword("");
+    setFullName("");
+    setRole("pelanggan");
   }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/40 p-4 backdrop-blur-sm">
       <div className="relative w-full max-w-md rounded-3xl border border-stone-200 bg-white p-6 shadow-2xl">
         <button
+          type="button"
           onClick={onClose}
-          className="absolute right-4 top-4 rounded-full p-1 text-stone-400 hover:bg-stone-100 hover:text-stone-600"
+          disabled={loading}
+          className="absolute right-4 top-4 rounded-full p-1 text-stone-400 hover:bg-stone-100 hover:text-stone-600 disabled:opacity-50"
+          aria-label="Tutup modal"
         >
           <X size={20} />
         </button>
@@ -45,12 +80,14 @@ export default function AuthModal({ open, onClose, onSuccess, onError }) {
           <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-50 text-amber-600">
             <Lock size={24} />
           </div>
+
           <h3 className="text-xl font-bold text-stone-800">
             {isRegister ? "Buat Akun" : "Masuk Akun"}
           </h3>
+
           <p className="mt-1 text-xs text-stone-500">
             {isRegister
-              ? "Daftarkan akun untuk pelanggan, karyawan, atau manager."
+              ? "Daftarkan akun Anda untuk melanjutkan."
               : "Masuk untuk melanjutkan ke dashboard Anda."}
           </p>
         </div>
@@ -61,14 +98,20 @@ export default function AuthModal({ open, onClose, onSuccess, onError }) {
               <label className="mb-1 block text-xs font-semibold text-stone-600">
                 Nama Lengkap
               </label>
+
               <div className="relative">
-                <User className="absolute left-3 top-2.5 text-stone-400" size={18} />
+                <User
+                  className="absolute left-3 top-2.5 text-stone-400"
+                  size={18}
+                />
+
                 <input
                   type="text"
                   required
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   placeholder="Nama Anda"
+                  autoComplete="name"
                   className="w-full rounded-xl border border-stone-200 py-2 pl-10 pr-3 text-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
                 />
               </div>
@@ -79,14 +122,20 @@ export default function AuthModal({ open, onClose, onSuccess, onError }) {
             <label className="mb-1 block text-xs font-semibold text-stone-600">
               Email
             </label>
+
             <div className="relative">
-              <Mail className="absolute left-3 top-2.5 text-stone-400" size={18} />
+              <Mail
+                className="absolute left-3 top-2.5 text-stone-400"
+                size={18}
+              />
+
               <input
                 type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="nama@email.com"
+                autoComplete="email"
                 className="w-full rounded-xl border border-stone-200 py-2 pl-10 pr-3 text-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
               />
             </div>
@@ -96,14 +145,23 @@ export default function AuthModal({ open, onClose, onSuccess, onError }) {
             <label className="mb-1 block text-xs font-semibold text-stone-600">
               Password
             </label>
+
             <div className="relative">
-              <Lock className="absolute left-3 top-2.5 text-stone-400" size={18} />
+              <Lock
+                className="absolute left-3 top-2.5 text-stone-400"
+                size={18}
+              />
+
               <input
                 type="password"
                 required
+                minLength={6}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
+                placeholder="Minimal 6 karakter"
+                autoComplete={
+                  isRegister ? "new-password" : "current-password"
+                }
                 className="w-full rounded-xl border border-stone-200 py-2 pl-10 pr-3 text-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
               />
             </div>
@@ -114,8 +172,13 @@ export default function AuthModal({ open, onClose, onSuccess, onError }) {
               <label className="mb-1 block text-xs font-semibold text-stone-600">
                 Role
               </label>
+
               <div className="relative">
-                <ShieldCheck className="absolute left-3 top-2.5 text-stone-400" size={18} />
+                <ShieldCheck
+                  className="absolute left-3 top-2.5 text-stone-400"
+                  size={18}
+                />
+
                 <select
                   value={role}
                   onChange={(e) => setRole(e.target.value)}
@@ -132,10 +195,13 @@ export default function AuthModal({ open, onClose, onSuccess, onError }) {
           <button
             type="submit"
             disabled={loading}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-amber-600 py-2.5 text-sm font-semibold text-white transition hover:bg-amber-700 disabled:opacity-50"
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-amber-600 py-2.5 text-sm font-semibold text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {loading ? (
-              <LoaderCircle className="animate-spin" size={18} />
+              <>
+                <LoaderCircle className="animate-spin" size={18} />
+                Memproses...
+              </>
             ) : isRegister ? (
               "Daftar & Lanjut"
             ) : (
@@ -146,8 +212,10 @@ export default function AuthModal({ open, onClose, onSuccess, onError }) {
 
         <div className="mt-4 text-center">
           <button
-            onClick={() => setIsRegister(!isRegister)}
-            className="text-xs font-semibold text-amber-600 hover:underline"
+            type="button"
+            onClick={resetForm}
+            disabled={loading}
+            className="text-xs font-semibold text-amber-600 hover:underline disabled:opacity-50"
           >
             {isRegister
               ? "Sudah punya akun? Masuk"

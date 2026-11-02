@@ -66,7 +66,7 @@ function MainApp() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [authModalOpen, setAuthModalOpen] = useState(false);
-
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
   const { cart, totalPrice, clearCart } = useCart();
 
   const applyUser = useCallback((nextUser) => {
@@ -137,17 +137,24 @@ function MainApp() {
     return () => clearTimeout(timeout);
   }, [message]);
 
-  async function handleCheckoutProcess() {
-    if (!user) {
-      setAuthModalOpen(true);
-      return;
-    }
+  
+async function handleCheckoutProcess() {
+  if (checkoutLoading) return;
 
-    if (cart.length === 0) {
-      setError("Keranjang belanja Anda masih kosong.");
-      return;
-    }
+  if (!user) {
+    setAuthModalOpen(true);
+    return;
+  }
 
+  if (cart.length === 0) {
+    setError("Keranjang belanja Anda masih kosong.");
+    return;
+  }
+
+  setCheckoutLoading(true);
+  setError("");
+
+  try {
     const orderPayload = {
       user_id: user.id,
       total_amount: totalPrice,
@@ -164,8 +171,17 @@ function MainApp() {
 
     clearCart();
     setMessage("Pesanan berhasil dibuat! Silakan cek di menu Pesanan.");
-    refresh();
+
+    await refresh();
+  } catch (error) {
+    setError(
+      `Terjadi kesalahan saat checkout: ${error.message}`
+    );
+  } finally {
+    setCheckoutLoading(false);
   }
+}
+
 
   async function changeStatus(order, status) {
     const { error } = await updateOrderStatus(order.id, status);
