@@ -1,40 +1,91 @@
-import { createContext, useContext, useEffect, useState } from "react";
 
-const CartContext = createContext();
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
+
+const CartContext = createContext(null);
+
+const CART_STORAGE_KEY = "dismus_cart";
 
 export function CartProvider({ children }) {
   const [cart, setCart] = useState(() => {
-    const saved = localStorage.getItem("dismus_cart");
-    return saved ? JSON.parse(saved) : [];
+    try {
+      const saved = localStorage.getItem(CART_STORAGE_KEY);
+
+      if (!saved) return [];
+
+      const parsedCart = JSON.parse(saved);
+
+      return Array.isArray(parsedCart) ? parsedCart : [];
+    } catch (error) {
+      console.error("Gagal membaca data keranjang:", error);
+      return [];
+    }
   });
+
   const [cartOpen, setCartOpen] = useState(false);
 
+  // Simpan keranjang ke localStorage
   useEffect(() => {
-    localStorage.setItem("dismus_cart", JSON.stringify(cart));
+    try {
+      localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart));
+    } catch (error) {
+      console.error("Gagal menyimpan keranjang:", error);
+    }
   }, [cart]);
 
+  // Menambahkan produk ke keranjang
   const addToCart = (item) => {
     setCart((prev) => {
-      const exist = prev.find((i) => i.id === item.id);
-      if (exist) {
-        return prev.map((i) => (i.id === item.id ? { ...i, qty: i.qty + 1 } : i));
+      const existingItem = prev.find(
+        (cartItem) => cartItem.id === item.id
+      );
+
+      if (existingItem) {
+        return prev.map((cartItem) =>
+          cartItem.id === item.id
+            ? { ...cartItem, qty: cartItem.qty + 1 }
+            : cartItem
+        );
       }
+
       return [...prev, { ...item, qty: 1 }];
     });
   };
 
+  // Menambah atau mengurangi jumlah produk
   const updateQty = (id, delta) => {
     setCart((prev) =>
       prev
-        .map((item) => (item.id === id ? { ...item, qty: item.qty + delta } : item))
+        .map((item) =>
+          item.id === id
+            ? { ...item, qty: item.qty + delta }
+            : item
+        )
         .filter((item) => item.qty > 0)
     );
   };
 
-  const clearCart = () => setCart([]);
+  // Menghapus seluruh produk dari keranjang
+  const clearCart = () => {
+    setCart([]);
+  };
 
-  const totalItems = cart.reduce((sum, item) => sum + item.qty, 0);
-  const totalPrice = cart.reduce((sum, item) => sum + (item.price || item.harga || 0) * item.qty, 0);
+  // Menghitung total jumlah produk
+  const totalItems = cart.reduce(
+    (sum, item) => sum + item.qty,
+    0
+  );
+
+  // Menghitung total harga
+  const totalPrice = cart.reduce((sum, item) => {
+    const price = Number(item.price ?? item.harga ?? 0);
+
+    return sum + price * item.qty;
+  }, 0);
 
   return (
     <CartContext.Provider
@@ -54,4 +105,15 @@ export function CartProvider({ children }) {
   );
 }
 
-export const useCart = () => useContext(CartContext);
+// Custom hook untuk menggunakan CartContext
+export function useCart() {
+  const context = useContext(CartContext);
+
+  if (!context) {
+    throw new Error(
+      "useCart harus digunakan di dalam CartProvider"
+    );
+  }
+
+  return context;
+}
