@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Search, Plus, Check, ShoppingBag, UtensilsCrossed, AlertCircle } from "lucide-react";
+import { Search, Plus, Check, ShoppingBag, UtensilsCrossed, AlertCircle, ArrowRight } from "lucide-react";
 import { useCart } from "../../context/CartContext";
 
 export default function CustomerCatalog({ menus = [], onCheckout }) {
@@ -33,8 +33,8 @@ export default function CustomerCatalog({ menus = [], onCheckout }) {
   const handleAddToCart = (item) => {
     addToCart({
       id: item.id,
-      name: item.nama_menu, // Mensejajarkan dengan kolom 'nama_menu' DB
-      price: item.harga,    // Mensejajarkan dengan kolom 'harga' DB
+      name: item.nama_menu,
+      price: item.harga,
       kategori: item.kategori,
     });
 
@@ -44,7 +44,8 @@ export default function CustomerCatalog({ menus = [], onCheckout }) {
   };
 
   return (
-    <div className="space-y-6">
+    /* Diberikan pb-28 agar saat scroll ke paling bawah, menu tidak pernah tertutup bar keranjang */
+    <div className="space-y-6 pb-28">
       {/* Banner Hero */}
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-amber-500 to-amber-600 p-6 text-white shadow-lg sm:p-8">
         <div className="relative z-10 max-w-xl">
@@ -58,7 +59,7 @@ export default function CustomerCatalog({ menus = [], onCheckout }) {
             Pilih varian dimsum favorit langsung dari dapur kami. Tambahkan ke keranjang dan lakukan pemesanan dengan mudah.
           </p>
         </div>
-        <div className="absolute -bottom-6 -right-6 text-8xl opacity-20 pointer-events-none sm:text-9xl">
+        <div className="absolute -bottom-6 -right-6 text-8xl opacity-20 pointer-events-none select-none sm:text-9xl">
           🥟
         </div>
       </div>
@@ -184,19 +185,19 @@ export default function CustomerCatalog({ menus = [], onCheckout }) {
         </div>
       )}
 
-      {/* Floating Bottom Bar Keranjang (Mobile/Quick Access) */}
+      {/* Floating Bottom Bar Keranjang Ramping & Tidak Mengganggu Viewport */}
       {totalItems > 0 && (
-        <div className="fixed bottom-5 left-1/2 z-40 flex w-[90%] max-w-md -translate-x-1/2 items-center justify-between rounded-2xl bg-stone-900 p-4 text-white shadow-2xl backdrop-blur-md">
+        <div className="fixed bottom-4 left-1/2 z-40 flex w-[92%] max-w-lg -translate-x-1/2 items-center justify-between rounded-full bg-stone-900/95 px-5 py-3 text-white shadow-2xl backdrop-blur-md border border-stone-800 transition-all duration-300">
           <div className="flex items-center gap-3">
-            <div className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500 text-white font-bold">
-              <ShoppingBag size={20} />
-              <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-rose-500 text-[10px] font-extrabold">
+            <div className="relative flex h-9 w-9 items-center justify-center rounded-full bg-amber-500 text-white font-bold">
+              <ShoppingBag size={18} />
+              <span className="absolute -right-1 -top-1 flex h-4.5 w-4.5 items-center justify-center rounded-full bg-rose-500 text-[9px] font-black">
                 {totalItems}
               </span>
             </div>
             <div>
-              <p className="text-[11px] text-stone-400">Total Belanja</p>
-              <p className="text-sm font-bold text-amber-400">
+              <p className="text-[10px] text-stone-400 font-medium">Total ({totalItems} Item)</p>
+              <p className="text-xs font-extrabold text-amber-400">
                 Rp {totalPrice.toLocaleString("id-ID")}
               </p>
             </div>
@@ -204,9 +205,10 @@ export default function CustomerCatalog({ menus = [], onCheckout }) {
 
           <button
             onClick={() => setCartOpen(true)}
-            className="rounded-xl bg-amber-500 px-4 py-2 text-xs font-bold text-white transition hover:bg-amber-600"
+            className="flex items-center gap-1.5 rounded-full bg-amber-500 px-4 py-2 text-xs font-bold text-white transition hover:bg-amber-600 active:scale-95 shadow-md"
           >
-            Lihat Keranjang →
+            <span>Lihat Keranjang</span>
+            <ArrowRight size={14} />
           </button>
         </div>
       )}
