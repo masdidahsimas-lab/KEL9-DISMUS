@@ -1,4 +1,3 @@
-
 import { supabase } from "../lib/supabase";
 
 const ORDER_STATUSES = [
@@ -9,10 +8,11 @@ const ORDER_STATUSES = [
   "Dibatalkan",
 ];
 
+// FETCH DATA DENGAN JOIN TABEL PEMBAYARAN
 export async function getOrders() {
   return await supabase
     .from("pesanan")
-    .select("*")
+    .select("*, pembayaran(*)")
     .order("created_at", { ascending: false });
 }
 
@@ -35,7 +35,7 @@ export async function updateOrderStatus(id, status) {
 export async function createOrder({
   pelanggan_id,
   items = [],
-  metode_pembayaran = "COD",
+  metode_pembayaran = "Cash",
   catatan = null,
 }) {
   try {
@@ -82,7 +82,11 @@ export async function createOrder({
 
     const kode_pesanan = `DS-${Date.now()}`;
 
-    // 1. Simpan pesanan utama
+    const isQris = metode_pembayaran === "QRIS";
+    const initialStatus = isQris ? "Dikonfirmasi" : "Menunggu";
+    const initialPaymentStatus = isQris ? "Lunas" : "Menunggu";
+
+    // 1. Simpan pesanan utama (Termasuk simpan kolom metode_pembayaran jika ada)
     const { data: order, error: orderError } = await supabase
       .from("pesanan")
       .insert({
@@ -90,7 +94,8 @@ export async function createOrder({
         kode_pesanan,
         tanggal_pesanan: new Date().toISOString(),
         total_harga,
-        status: "Menunggu",
+        status: initialStatus,
+        metode_pembayaran,
         catatan: catatan?.trim() || null,
       })
       .select()
@@ -100,8 +105,11 @@ export async function createOrder({
 
     // 2. Simpan detail pesanan
     const detailRows = details.map((item) => ({
-      ...item,
       pesanan_id: order.id,
+      menu_id: item.menu_id,
+      jumlah: item.jumlah,
+      harga_satuan: item.harga_satuan,
+      level_pedas: item.level_pedas,
     }));
 
     const { error: detailError } = await supabase
@@ -114,13 +122,13 @@ export async function createOrder({
       );
     }
 
-    // 3. Simpan pembayaran
+    // 3. Simpan data pembayaran
     const { error: paymentError } = await supabase
       .from("pembayaran")
       .insert({
         pesanan_id: order.id,
         metode_pembayaran,
-        status_pembayaran: "Menunggu",
+        status_pembayaran: initialPaymentStatus,
         total_bayar: total_harga,
       });
 

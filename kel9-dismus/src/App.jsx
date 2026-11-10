@@ -1,33 +1,45 @@
 import { useCallback, useEffect, useState } from "react";
 import { LoaderCircle, AlertCircle, CheckCircle2, X } from "lucide-react";
-
+import Swal from "sweetalert2";
+import { AuthProvider } from "./context/AuthContext";
 import { supabase } from "./lib/supabase";
 import Sidebar from "./components/Sidebar";
 import Header from "./components/Header";
 import AuthModal from "./components/AuthModal";
 import CartDrawer from "./components/CartDrawer";
 
+// Import Halaman Manajer & Karyawan
 import Dashboard from "./pages/Dashboard";
-import CustomerDashboard from "./pages/pelanggan/Dashboard";
 import MenuPage from "./pages/MenuPage";
+import MenuManagement from "./pages/manajer/MenuManagement";
+import AddEmployee from "./pages/manajer/AddEmployee";
+import ManagerReports from "./pages/manajer/ManagerReports";
 import OrdersPage from "./pages/OrdersPage";
 import StockPage from "./pages/StockPage";
-import ReportsPage from "./pages/ReportsPage";
+
+// Import Halaman Pelanggan
+import DashboardCust from "./pages/pelanggan/DashboardCust";
+import Checkout from "./pages/pelanggan/Checkout";
+import CustomerHistory from "./pages/pelanggan/CustomerHistory";
 import CustomerCatalog from "./pages/pelanggan/CustomerCatalog";
 
 import { CartProvider, useCart } from "./context/CartContext";
 import { getMenus } from "./services/menuService";
-import { getOrders, updateOrderStatus, createOrder } from "./services/orderService";
-import { getStock, saveStock as saveStockService } from "./services/stockService";
+import { getOrders, updateOrderStatus } from "./services/orderService";
+import { getStock, saveStock as saveStockService, deleteStock as deleteStockService } from "./services/stockService";
 import { getCurrentUser, logoutUser } from "./services/authService";
 
 const labels = {
   katalog: "Katalog Dimsum",
-  dashboard: "Dashboard",
+  dashboard: "Dashboard Utama",
   menus: "Kelola Menu",
+  resep: "Resep Menu & Stok Porsi",
   pesanan: "Pesanan",
-  stok: "Stok Bahan",
-  laporan: "Laporan",
+  stok: "Stok Bahan Baku",
+  laporan: "Laporan Penjualan",
+  checkout: "Checkout & Pembayaran",
+  riwayat: "Riwayat Pembelian",
+  tambah_karyawan: "Tambah Pegawai",
 };
 
 const getUserRole = (user) => {
@@ -38,7 +50,7 @@ const getUserRole = (user) => {
     user?.app_metadata?.akses ||
     "pelanggan";
 
-  const validRoles = ["pelanggan", "karyawan", "manager"];
+  const validRoles = ["pelanggan", "karyawan", "manajer", "manager"];
   const savedRole = localStorage.getItem("dimsum_user_role");
 
   if (validRoles.includes(roleFromMeta)) {
@@ -66,8 +78,8 @@ function MainApp() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [authModalOpen, setAuthModalOpen] = useState(false);
-
-  const { cart, totalPrice, clearCart } = useCart();
+  const [checkoutLoading] = useState(false);
+  const { cart } = useCart();
 
   const applyUser = useCallback((nextUser) => {
     const nextRole = getUserRole(nextUser);
@@ -81,14 +93,17 @@ function MainApp() {
     }
   }, []);
 
-  const refresh = useCallback(async () => {
+  // Perbaikan: Opsi showSpinner agar refresh latar belakang tidak me-unmount halaman
+  const refresh = useCallback(async (showSpinner = false) => {
     if (!supabase) {
-      setError("Konfigurasi Supabase belum ada. Salin .env.example menjadi .env lalu isi URL dan publishable/anon key.");
+      setError("Konfigurasi Supabase belum ada.");
       setLoading(false);
       return;
     }
 
-    setLoading(true);
+    if (showSpinner) {
+      setLoading(true);
+    }
     setError("");
 
     const [menusRes, ordersRes, stockRes, userRes] = await Promise.all([
@@ -101,7 +116,7 @@ function MainApp() {
     const failed = [menusRes, ordersRes, stockRes].find((result) => result.error);
 
     if (failed) {
-      setError(`Gagal mengambil data dari Supabase: ${failed.error.message}. Periksa nama kolom/tabel dan kebijakan RLS.`);
+      setError(`Gagal mengambil data dari Supabase: ${failed.error.message}`);
     } else {
       setMenus(menusRes.data || []);
       setOrders(ordersRes.data || []);
@@ -119,7 +134,7 @@ function MainApp() {
   }, [applyUser]);
 
   useEffect(() => {
-    refresh();
+    refresh(true);
 
     if (supabase) {
       const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -138,6 +153,8 @@ function MainApp() {
   }, [message]);
 
   async function handleCheckoutProcess() {
+    if (checkoutLoading) return;
+
     if (!user) {
       setAuthModalOpen(true);
       return;
@@ -148,23 +165,7 @@ function MainApp() {
       return;
     }
 
-    const orderPayload = {
-      user_id: user.id,
-      total_amount: totalPrice,
-      items: cart,
-      status: "Pending",
-    };
-
-    const { error } = await createOrder(orderPayload);
-
-    if (error) {
-      setError(`Gagal membuat pesanan: ${error.message}`);
-      return;
-    }
-
-    clearCart();
-    setMessage("Pesanan berhasil dibuat! Silakan cek di menu Pesanan.");
-    refresh();
+    setPage("checkout");
   }
 
   async function changeStatus(order, status) {
@@ -191,45 +192,176 @@ function MainApp() {
     await refresh();
   }
 
-  async function handleLogout() {
-    const result = await logoutUser();
+  async function handleDeleteStock(id) {
+    const { error } = await deleteStockService(id);
 
-    if (result.error) {
-      setError(`Gagal logout: ${result.error.message}`);
+    if (error) {
+      setError(`Stok gagal dihapus: ${error.message}`);
+      return { error };
+    }
+
+    setStock((prevStock) => prevStock.filter((item) => item.id !== id));
+    setMessage("Bahan baku berhasil dihapus.");
+    return { error: null };
+  }
+
+  async function handleLogout() {
+    const result = await Swal.fire({
+      title: "Konfirmasi Keluar",
+      text: "Apakah Anda yakin ingin keluar dari akun ini?",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#e11d48",
+      cancelButtonColor: "#6b7280",
+      confirmButtonText: "Ya, Keluar!",
+      cancelButtonText: "Batal",
+    });
+
+    if (!result.isConfirmed) return;
+
+    const res = await logoutUser();
+
+    if (res?.error) {
+      Swal.fire({
+        icon: "error",
+        title: "Gagal Keluar",
+        text: res.error.message,
+        confirmButtonColor: "#e11d48",
+      });
       return;
     }
 
     applyUser(null);
     setPage("katalog");
-    setMessage("Berhasil keluar.");
+
+    Swal.fire({
+      icon: "success",
+      title: "Berhasil Keluar",
+      text: "Anda telah keluar dari akun.",
+      timer: 1500,
+      showConfirmButton: false,
+    });
   }
 
-  const isManagerOrStaff = role === "manager" || role === "karyawan";
+  const isManager = role === "manajer" || role === "manager";
+  const isManagerOrStaff = isManager || role === "karyawan";
 
-  useEffect(() => {
-    if (!user) {
-      setRole("pelanggan");
-      return;
+  // Perbaikan: Rute switch-case yang bersih tanpa duplikasi
+  const renderManagerContent = () => {
+    switch (page) {
+      case "dashboard":
+        return (
+          <Dashboard
+            userRole={role}
+            menus={menus}
+            orders={orders}
+            stock={stock}
+            user={user}
+            onNavigate={setPage}
+          />
+        );
+      case "menus":
+        return (
+          <MenuPage
+            menus={menus}
+            onRefresh={refresh}
+            onError={setError}
+            onMessage={setMessage}
+          />
+        );
+      case "resep":
+        return <MenuManagement onRefresh={refresh} />;
+      case "stok":
+        return (
+          <StockPage
+            stock={stock}
+            onSave={saveStock}
+            onDelete={handleDeleteStock}
+            onRefresh={refresh}
+            onError={setError}
+          />
+        );
+      case "laporan":
+        return <ManagerReports orders={orders} />;
+      case "tambah_karyawan":
+        return isManager ? (
+          <AddEmployee />
+        ) : (
+          <Dashboard
+            userRole={role}
+            menus={menus}
+            orders={orders}
+            stock={stock}
+            user={user}
+            onNavigate={setPage}
+          />
+        );
+      default:
+        return (
+          <Dashboard
+            userRole={role}
+            menus={menus}
+            orders={orders}
+            stock={stock}
+            user={user}
+            onNavigate={setPage}
+          />
+        );
     }
+  };
 
-    const nextRole = getUserRole(user);
-    setRole(nextRole);
-
-    if (nextRole === "pelanggan") {
-      setPage("katalog");
-    } else {
-      setPage("dashboard");
+  const renderCustomerContent = () => {
+    switch (page) {
+      case "dashboard":
+        return (
+          <DashboardCust
+            menus={menus}
+            orders={orders}
+            stock={stock}
+            user={user}
+            onNavigate={setPage}
+          />
+        );
+      case "checkout":
+        return (
+          <Checkout
+            onRefresh={refresh}
+            onOpenAuth={() => setAuthModalOpen(true)}
+            onNavigate={setPage}
+            onOrderSuccess={() => {
+              setMessage("Pesanan berhasil dibuat!");
+              refresh();
+              setPage("riwayat");
+            }}
+          />
+        );
+      case "riwayat":
+        return <CustomerHistory onNavigate={setPage} />;
+      case "katalog":
+      default:
+        return (
+          <CustomerCatalog
+            menus={menus}
+            onCheckout={handleCheckoutProcess}
+          />
+        );
     }
-  }, [user]);
+  };
 
   return (
     <div className="min-h-screen bg-[#faf8f7]">
-      <Sidebar page={page} onNavigate={setPage} open={sidebarOpen} onClose={() => setSidebarOpen(false)} role={role} />
+      <Sidebar
+        page={page}
+        onNavigate={setPage}
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        role={role}
+      />
 
       <div className="min-h-screen lg:pl-[260px]">
         <Header
           title={labels[page] || "Dashboard"}
-          onRefresh={refresh}
+          onRefresh={() => refresh(true)}
           onOpen={() => setSidebarOpen(true)}
           user={user}
           role={role}
@@ -239,7 +371,10 @@ function MainApp() {
 
         <main className="mx-auto max-w-[1500px] p-4 sm:p-7 lg:p-9">
           {error && (
-            <div role="alert" className="mb-5 flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-rose-800">
+            <div
+              role="alert"
+              className="mb-5 flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-rose-800"
+            >
               <AlertCircle className="mt-0.5 shrink-0" />
               <p className="flex-1 text-sm leading-6">{error}</p>
               <button onClick={() => setError("")} aria-label="Tutup pesan">
@@ -249,7 +384,10 @@ function MainApp() {
           )}
 
           {message && (
-            <div role="status" className="mb-5 flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 font-semibold text-emerald-800">
+            <div
+              role="status"
+              className="mb-5 flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 font-semibold text-emerald-800"
+            >
               <CheckCircle2 size={20} />
               {message}
             </div>
@@ -261,23 +399,9 @@ function MainApp() {
               <p>Memuat data Supabase...</p>
             </div>
           ) : isManagerOrStaff ? (
-            page === "dashboard" ? (
-              <Dashboard menus={menus} orders={orders} stock={stock} user={user} onNavigate={setPage} />
-            ) : page === "menus" ? (
-              <MenuPage menus={menus} onRefresh={refresh} onError={setError} onMessage={setMessage} />
-            ) : page === "pesanan" ? (
-              <OrdersPage orders={orders} onStatus={changeStatus} onError={setError} />
-            ) : page === "stok" ? (
-              <StockPage stock={stock} onSave={saveStock} onError={setError} />
-            ) : (
-              <ReportsPage orders={orders} />
-            )
+            renderManagerContent()
           ) : (
-            page === "dashboard" ? (
-              <CustomerDashboard menus={menus} orders={orders} stock={stock} user={user} onNavigate={setPage} />
-            ) : (
-              <CustomerCatalog menus={menus} onCheckout={handleCheckoutProcess} />
-            )
+            renderCustomerContent()
           )}
         </main>
       </div>
@@ -306,8 +430,10 @@ function MainApp() {
 
 export default function App() {
   return (
-    <CartProvider>
-      <MainApp />
-    </CartProvider>
+    <AuthProvider>
+      <CartProvider>
+        <MainApp />
+      </CartProvider>
+    </AuthProvider>
   );
 }
