@@ -1,5 +1,63 @@
-
 import { supabase } from "../lib/supabase";
+
+// ==========================================
+// HELPER FUNCTIONS (Clean Code & DRY Principle)
+// ==========================================
+
+// Mengambil data profil dari tabel "profiles"
+async function fetchUserProfile(userId) {
+  const { data: profile, error } = await supabase
+    .from("profiles")
+    .select("id, username, nama_lengkap, role")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return profile;
+}
+
+// Memformat objek user agar struktur metadata konsisten
+function formatUserData(user, profile) {
+  return {
+    ...user,
+    profile,
+    user_metadata: {
+      ...user.user_metadata,
+      role: profile?.role || "pelanggan",
+      full_name: profile?.nama_lengkap || user.user_metadata?.full_name || "",
+    },
+  };
+}
+
+// Memeriksa dan menambahkan profil baru jika belum ada saat registrasi
+async function ensureUserProfileExists(user, fullName, email) {
+  if (!user) return;
+
+  const { data: existing, error: readError } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (readError) throw readError;
+
+  if (!existing) {
+    const { error: insertError } = await supabase
+      .from("profiles")
+      .insert({
+        id: user.id,
+        username: email.trim().toLowerCase(),
+        nama_lengkap: fullName.trim(),
+        role: "pelanggan",
+      });
+
+    if (insertError) throw insertError;
+  }
+}
+
+// ==========================================
+// MAIN SERVICE FUNCTIONS
+// ==========================================
 
 // Mengambil pengguna yang sedang login
 export async function getCurrentUser() {
@@ -9,26 +67,10 @@ export async function getCurrentUser() {
     if (error) throw error;
     if (!user) return { data: null, error: null };
 
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("id, username, nama_lengkap, role")
-      .eq("id", user.id)
-      .maybeSingle();
+    const profile = await fetchUserProfile(user.id);
+    const formattedUser = formatUserData(user, profile);
 
-    if (profileError) throw profileError;
-
-    return {
-      data: {
-        ...user,
-        profile,
-        user_metadata: {
-          ...user.user_metadata,
-          role: profile?.role || "pelanggan",
-          full_name: profile?.nama_lengkap || user.user_metadata?.full_name || "",
-        },
-      },
-      error: null,
-    };
+    return { data: formattedUser, error: null };
   } catch (error) {
     return { data: null, error };
   }
@@ -44,26 +86,13 @@ export async function loginUser(email, password) {
 
     if (error) throw error;
 
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("id, username, nama_lengkap, role")
-      .eq("id", data.user.id)
-      .maybeSingle();
-
-    if (profileError) throw profileError;
+    const profile = await fetchUserProfile(data.user.id);
+    const formattedUser = formatUserData(data.user, profile);
 
     return {
       data: {
         ...data,
-        user: {
-          ...data.user,
-          profile,
-          user_metadata: {
-            ...data.user.user_metadata,
-            role: profile?.role || "pelanggan",
-            full_name: profile?.nama_lengkap || "",
-          },
-        },
+        user: formattedUser,
       },
       error: null,
     };
@@ -75,16 +104,19 @@ export async function loginUser(email, password) {
 // Registrasi pelanggan
 export async function registerUser(email, password, fullName) {
   try {
-    if (!email.trim() || !password || !fullName.trim()) {
+    const cleanEmail = email.trim();
+    const cleanFullName = fullName.trim();
+
+    if (!cleanEmail || !password || !cleanFullName) {
       throw new Error("Nama, email, dan password wajib diisi.");
     }
 
     const { data, error } = await supabase.auth.signUp({
-      email: email.trim(),
+      email: cleanEmail,
       password,
       options: {
         data: {
-          full_name: fullName.trim(),
+          full_name: cleanFullName,
           role: "pelanggan",
         },
       },
@@ -93,26 +125,7 @@ export async function registerUser(email, password, fullName) {
     if (error) throw error;
 
     if (data.user && data.session) {
-      const { data: existing, error: readError } = await supabase
-        .from("profiles")
-        .select("id")
-        .eq("id", data.user.id)
-        .maybeSingle();
-
-      if (readError) throw readError;
-
-      if (!existing) {
-        const { error: insertError } = await supabase
-          .from("profiles")
-          .insert({
-            id: data.user.id,
-            username: email.trim().toLowerCase(),
-            nama_lengkap: fullName.trim(),
-            role: "pelanggan",
-          });
-
-        if (insertError) throw insertError;
-      }
+      await ensureUserProfileExists(data.user, cleanFullName, cleanEmail);
     }
 
     return { data, error: null };
