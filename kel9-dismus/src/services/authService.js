@@ -1,10 +1,107 @@
 import { supabase } from "../lib/supabase";
 
+<<<<<<< HEAD
+=======
+// ==========================================
+// HELPER FUNCTIONS (Clean Code & DRY Principle)
+// ==========================================
+
+// Mengambil data profil dari tabel "profiles"
+async function fetchUserProfile(userId) {
+  const { data: profile, error } = await supabase
+    .from("profiles")
+    .select("id, username, nama_lengkap, role")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return profile;
+}
+
+// Memformat objek user agar struktur metadata konsisten
+function formatUserData(user, profile) {
+  return {
+    ...user,
+    profile,
+    user_metadata: {
+      ...user.user_metadata,
+      role: profile?.role || "pelanggan",
+      full_name: profile?.nama_lengkap || user.user_metadata?.full_name || "",
+    },
+  };
+}
+
+// Memeriksa dan menambahkan profil baru jika belum ada saat registrasi
+async function ensureUserProfileExists(user, fullName, email) {
+  if (!user) return;
+
+  const { data: existing, error: readError } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (readError) throw readError;
+
+  if (!existing) {
+    const { error: insertError } = await supabase
+      .from("profiles")
+      .insert({
+        id: user.id,
+        username: email.trim().toLowerCase(),
+        nama_lengkap: fullName.trim(),
+        role: "pelanggan",
+      });
+
+    if (insertError) throw insertError;
+  }
+}
+
+// ==========================================
+// MAIN SERVICE FUNCTIONS
+// ==========================================
+
+// Mengambil pengguna yang sedang login
+import { createClient } from "@supabase/supabase-js";
+import { supabase } from "../lib/supabase";
+
+// Ambil URL & Key dari file environment
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+// Mengambil pengguna yang sedang login beserta profilnya
+>>>>>>> eddc0ca8d6bca5ffaa8773bec87b9318ce5c21ca
 export async function getCurrentUser() {
   try {
     const { data: { user }, error } = await supabase.auth.getUser();
     if (error) throw error;
+<<<<<<< HEAD
     return { data: user, error: null };
+=======
+    if (!user) return { data: null, error: null };
+
+    const profile = await fetchUserProfile(user.id);
+    const formattedUser = formatUserData(user, profile);
+
+    return { data: formattedUser, error: null };
+    if (profileError) throw profileError;
+
+    const role = profile?.role || user.user_metadata?.role || "pelanggan";
+
+    return {
+      data: {
+        ...user,
+        profile,
+        isOwnerOrManager: role === "owner" || role === "manager",
+        user_metadata: {
+          ...user.user_metadata,
+          role,
+          full_name: profile?.nama_lengkap || user.user_metadata?.full_name || "",
+        },
+      },
+      error: null,
+    };
+>>>>>>> eddc0ca8d6bca5ffaa8773bec87b9318ce5c21ca
   } catch (error) {
     return { data: null, error };
   }
@@ -14,6 +111,44 @@ export async function loginUser(email, password) {
   try {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
+<<<<<<< HEAD
+=======
+
+    const profile = await fetchUserProfile(data.user.id);
+    const formattedUser = formatUserData(data.user, profile);
+
+    return {
+      data: {
+        ...data,
+        user: formattedUser,
+      },
+      error: null,
+    };
+
+    if (data?.user) {
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("id, username, nama_lengkap, role")
+        .eq("id", data.user.id)
+        .maybeSingle();
+
+      if (profileError) throw profileError;
+
+      const role = profile?.role || data.user.user_metadata?.role || "pelanggan";
+
+      data.user = {
+        ...data.user,
+        profile,
+        isOwnerOrManager: role === "owner" || role === "manager",
+        user_metadata: {
+          ...data.user.user_metadata,
+          role,
+          full_name: profile?.nama_lengkap || data.user.user_metadata?.full_name || "",
+        },
+      };
+    }
+
+>>>>>>> eddc0ca8d6bca5ffaa8773bec87b9318ce5c21ca
     return { data, error: null };
   } catch (error) {
     return { data: null, error };
@@ -27,7 +162,73 @@ export async function registerUser(email, password, fullName, role = "pelanggan"
       password,
       options: {
         data: {
+<<<<<<< HEAD
           full_name: fullName,
+=======
+          full_name: cleanFullName,
+          role: "pelanggan",
+        },
+      },
+    });
+
+    if (error) throw error;
+
+    if (data.user && data.session) {
+      await ensureUserProfileExists(data.user, cleanFullName, cleanEmail);
+=======
+    if (data?.user) {
+      const { data: existing, error: readError } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("id", data.user.id)
+        .maybeSingle();
+
+      if (readError) throw readError;
+
+      if (!existing) {
+        const { error: insertError } = await supabase
+          .from("profiles")
+          .insert({
+            id: data.user.id,
+            username: email.trim().toLowerCase(),
+            nama_lengkap: fullName.trim(),
+            role: "pelanggan",
+          });
+
+        if (insertError) throw insertError;
+      }
+>>>>>>> 4009293f48265d99d3319b51d2fd851a7bf86bc5
+    }
+
+    return { data, error: null };
+  } catch (error) {
+    return { data: null, error };
+  }
+}
+
+// Fungsi khusus Manager/Owner untuk menambah user/karyawan tanpa mereset sesi Manajer di Navbar
+export async function addUserByManager(email, password, fullName, role = "karyawan") {
+  try {
+    if (!email.trim() || !password || !fullName.trim()) {
+      throw new Error("Semua kolom wajib diisi.");
+    }
+
+    // Client terisolasi agar TIDAK mengubah session/localStorage Manajer yang sedang login
+    const tempClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+      },
+    });
+
+    const { data, error } = await tempClient.auth.signUp({
+      email: email.trim(),
+      password,
+      options: {
+        data: {
+          full_name: fullName.trim(),
+>>>>>>> eddc0ca8d6bca5ffaa8773bec87b9318ce5c21ca
           role,
         },
       },

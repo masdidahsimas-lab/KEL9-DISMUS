@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+<<<<<<< HEAD
 import { Plus, Search, Edit3, Trash2, Coffee, LoaderCircle } from "lucide-react";
 import { Button, Field, inputClass } from "../components/Modal";
 import Modal from "../components/Modal";
@@ -6,37 +7,71 @@ import EmptyState from "../components/EmptyState";
 import { rupiah } from "../utils/format";
 
 export default function MenuPage({ menus, onRefresh, onError, onMessage }) {
+=======
+import {
+  Plus,
+  Search,
+  Edit3,
+  Trash2,
+  Coffee,
+  LoaderCircle,
+} from "lucide-react";
+import Swal from "sweetalert2"; // Import SweetAlert2
+
+import Modal, { Button, Field, inputClass } from "../components/Modal";
+import EmptyState from "../components/EmptyState";
+import { rupiah } from "../utils/format";
+import { saveMenu, deleteMenu } from "../services/menuService";
+import {
+  validateInput,
+  VALID_MENU_CATEGORIES,
+} from "../utils/validation";
+
+export default function MenuPage({
+  menus = [],
+  onRefresh,
+  onError,
+  onMessage,
+}) {
+>>>>>>> eddc0ca8d6bca5ffaa8773bec87b9318ce5c21ca
   const [query, setQuery] = useState("");
   const [modal, setModal] = useState(false);
   const [edit, setEdit] = useState(null);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     nama_menu: "",
-    kategori: "Dimsum",
+    kategori: "dimsum",
     harga: "",
     deskripsi: "",
     tersedia: true,
   });
 
+  // State untuk menyimpan pesan error per input field (Validasi Teks Input)
+  const [fieldErrors, setFieldErrors] = useState({});
+
+  // Mencari menu berdasarkan nama atau kategori
   const filtered = useMemo(
     () => menus.filter((m) => `${m.nama_menu} ${m.kategori || ""}`.toLowerCase().includes(query.toLowerCase())),
     [menus, query]
   );
 
+  // Membuka modal tambah atau edit menu
   function open(item = null) {
     setEdit(item);
+    setFieldErrors({}); // Reset error saat modal dibuka
+
     setForm(
       item
         ? {
             nama_menu: item.nama_menu || "",
-            kategori: item.kategori || "Dimsum",
+            kategori: item.kategori?.toLowerCase() || "dimsum",
             harga: String(item.harga ?? ""),
             deskripsi: item.deskripsi || "",
             tersedia: item.tersedia ?? true,
           }
         : {
             nama_menu: "",
-            kategori: "Dimsum",
+            kategori: "dimsum",
             harga: "",
             deskripsi: "",
             tersedia: true,
@@ -46,10 +81,12 @@ export default function MenuPage({ menus, onRefresh, onError, onMessage }) {
     setModal(true);
   }
 
+  // Menyimpan menu baru atau memperbarui menu
   async function submit(e) {
     e.preventDefault();
     setSaving(true);
 
+<<<<<<< HEAD
     const { saveMenu } = await import("../services/menuService");
     const result = await saveMenu(
       {
@@ -72,35 +109,209 @@ export default function MenuPage({ menus, onRefresh, onError, onMessage }) {
     setModal(false);
     onMessage(edit ? "Menu berhasil diperbarui." : "Menu berhasil ditambahkan.");
     onRefresh();
+=======
+    if (saving) return;
+
+    const errors = {};
+
+    // 1. Validasi Nama Menu
+    const namaMenuError = validateInput({
+      field: "Nama menu",
+      value: form.nama_menu,
+      required: true,
+      type: "string",
+      minLength: 2,
+      format: /^[A-Za-z0-9À-ÖØ-öø-ÿ\s.'-]+$/,
+    });
+    if (namaMenuError) errors.nama_menu = namaMenuError;
+
+    // 2. Validasi Kategori
+    const kategoriError = validateInput({
+      field: "Kategori",
+      value: form.kategori,
+      required: true,
+      domain: VALID_MENU_CATEGORIES,
+    });
+    if (kategoriError) errors.kategori = kategoriError;
+
+    // 3. Validasi Harga
+    const harga = Number(form.harga);
+    const hargaError = validateInput({
+      field: "Harga menu",
+      value: form.harga,
+      required: true,
+      type: "number",
+      min: 0,
+      integer: true,
+    });
+    if (hargaError) errors.harga = hargaError;
+
+    // 4. Validasi Deskripsi
+    const deskripsiError = validateInput({
+      field: "Deskripsi",
+      value: form.deskripsi,
+      type: "string",
+      minLength: 0,
+    });
+    if (deskripsiError) errors.deskripsi = deskripsiError;
+
+    // Jika ada error input
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+
+      // SweetAlert Pop-up di ATAS Modal
+      Swal.fire({
+        icon: "error",
+        title: "Input Tidak Valid",
+        text: Object.values(errors)[0], // Menampilkan error pertama
+        confirmButtonColor: "#e11d48",
+      });
+      return;
+    }
+
+    setSaving(true);
+    setFieldErrors({});
+
+    try {
+      const res = await saveMenu(
+        {
+          nama_menu: form.nama_menu.trim(),
+          kategori: form.kategori.trim().toLowerCase() || "dimsum",
+          harga: harga,
+          deskripsi: form.deskripsi.trim(),
+          tersedia: form.tersedia,
+        },
+        edit?.id
+      );
+
+      if (res?.error) {
+        Swal.fire({
+          icon: "error",
+          title: "Gagal Menyimpan",
+          text: res.error.message || res.error,
+          confirmButtonColor: "#e11d48",
+        });
+        return;
+      }
+
+      setModal(false);
+
+      // Alert Sukses SweetAlert
+      Swal.fire({
+        icon: "success",
+        title: "Berhasil!",
+        text: edit ? "Menu berhasil diperbarui." : "Menu berhasil ditambahkan.",
+        timer: 2000,
+        showConfirmButton: false,
+      });
+
+      await onRefresh?.();
+    } catch (error) {
+      Swal.fire({
+        icon: "error",
+        title: "Terjadi Kesalahan",
+        text: error.message || error,
+        confirmButtonColor: "#e11d48",
+      });
+    } finally {
+      setSaving(false);
+    }
+>>>>>>> eddc0ca8d6bca5ffaa8773bec87b9318ce5c21ca
   }
 
+  // Menghapus menu dengan Konfirmasi SweetAlert
   async function remove(item) {
+<<<<<<< HEAD
     if (!confirm(`Hapus menu "${item.nama_menu}"?`)) return;
+=======
+    const confirmResult = await Swal.fire({
+      title: "Hapus Menu?",
+      text: `Apakah Anda yakin ingin menghapus "${item.nama_menu}"?`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#e11d48",
+      cancelButtonColor: "#6b7280",
+      confirmButtonText: "Ya, Hapus!",
+      cancelButtonText: "Batal",
+    });
+
+    if (!confirmResult.isConfirmed) return;
+>>>>>>> eddc0ca8d6bca5ffaa8773bec87b9318ce5c21ca
 
     const { deleteMenu } = await import("../services/menuService");
     const { error } = await deleteMenu(item.id);
 
+<<<<<<< HEAD
     if (error) {
       onError(`Menu gagal dihapus: ${error.message}`);
       return;
+=======
+      const res = await deleteMenu(item.id);
+
+      if (res?.error) {
+        Swal.fire({
+          icon: "error",
+          title: "Gagal Hapus",
+          text: res.error.message || res.error,
+          confirmButtonColor: "#e11d48",
+        });
+        return;
+      }
+
+      Swal.fire({
+        icon: "success",
+        title: "Terhapus!",
+        text: "Menu berhasil dihapus.",
+        timer: 2000,
+        showConfirmButton: false,
+      });
+
+      await onRefresh?.();
+    } catch (error) {
+      Swal.fire({
+        icon: "error",
+        title: "Terjadi Kesalahan",
+        text: error.message || error,
+        confirmButtonColor: "#e11d48",
+      });
+    } finally {
+      setDeleting(null);
+>>>>>>> eddc0ca8d6bca5ffaa8773bec87b9318ce5c21ca
     }
 
     onMessage("Menu berhasil dihapus.");
     onRefresh();
   }
 
+  // Helper untuk menambahkan border merah pada input yang error
+  const getInputStyle = (fieldName) =>
+    `${inputClass} ${
+      fieldErrors[fieldName]
+        ? "border-red-500 focus:border-red-500 focus:ring-red-500"
+        : ""
+    }`;
+
   return (
     <section className="space-y-6">
+      {/* Judul dan Tombol Tambah */}
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
           <h2 className="text-2xl font-extrabold">Kelola Menu</h2>
           <p className="mt-2 text-stone-500">Atur nama, kategori, harga, dan ketersediaan menu.</p>
         </div>
+<<<<<<< HEAD
         <Button onClick={() => open()}>
           <Plus size={18} /> Tambah Menu
+=======
+
+        <Button type="button" onClick={() => open()}>
+          <Plus size={18} />
+          Tambah Menu
+>>>>>>> eddc0ca8d6bca5ffaa8773bec87b9318ce5c21ca
         </Button>
       </div>
 
+      {/* Kolom Pencarian */}
       <div className="flex items-center gap-3 rounded-2xl border bg-white px-4">
         <Search className="text-stone-400" />
         <input
@@ -111,6 +322,7 @@ export default function MenuPage({ menus, onRefresh, onError, onMessage }) {
         />
       </div>
 
+      {/* Daftar Menu */}
       {filtered.length === 0 ? (
         <EmptyState title="Menu belum tersedia" description="Tambahkan menu baru atau ubah pencarian." />
       ) : (
@@ -131,16 +343,53 @@ export default function MenuPage({ menus, onRefresh, onError, onMessage }) {
               </div>
 
               <h3 className="mt-4 text-lg font-extrabold">{m.nama_menu}</h3>
+<<<<<<< HEAD
               <p className="text-sm text-stone-500">{m.kategori || "Tanpa kategori"}</p>
               <p className="mt-3 min-h-10 text-sm leading-6 text-stone-600">{m.deskripsi || "Belum ada deskripsi."}</p>
               <p className="mt-4 text-xl font-extrabold text-brand-700">{rupiah(m.harga)}</p>
+=======
 
+              <p className="text-sm text-stone-500">
+                {m.kategori || "Tanpa kategori"}
+              </p>
+
+              <p className="mt-3 min-h-10 text-sm leading-6 text-stone-600">
+                {m.deskripsi || "Belum ada deskripsi."}
+              </p>
+
+              <p className="mt-4 text-xl font-extrabold text-brand-700">
+                {rupiah(m.harga)}
+              </p>
+>>>>>>> eddc0ca8d6bca5ffaa8773bec87b9318ce5c21ca
+
+              {/* Tombol Edit dan Hapus */}
               <div className="mt-5 flex gap-2 border-t pt-4">
-                <Button variant="secondary" onClick={() => open(m)}>
-                  <Edit3 size={16} /> Edit
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => open(m)}
+                >
+                  <Edit3 size={16} />
+                  Edit
                 </Button>
+<<<<<<< HEAD
                 <Button variant="danger" onClick={() => remove(m)}>
                   <Trash2 size={16} /> Hapus
+=======
+
+                <Button
+                  type="button"
+                  variant="danger"
+                  disabled={deleting === m.id}
+                  onClick={() => remove(m)}
+                >
+                  {deleting === m.id ? (
+                    <LoaderCircle className="animate-spin" size={16} />
+                  ) : (
+                    <Trash2 size={16} />
+                  )}
+                  Hapus
+>>>>>>> eddc0ca8d6bca5ffaa8773bec87b9318ce5c21ca
                 </Button>
               </div>
             </article>
@@ -148,64 +397,145 @@ export default function MenuPage({ menus, onRefresh, onError, onMessage }) {
         </div>
       )}
 
+      {/* Modal Tambah dan Edit Menu */}
       {modal && (
+<<<<<<< HEAD
         <Modal title={edit ? "Edit Menu" : "Tambah Menu Baru"} onClose={() => setModal(false)}>
           <form onSubmit={submit} className="space-y-4">
+=======
+        <Modal
+          title={edit ? "Edit Menu" : "Tambah Menu Baru"}
+          onClose={() => !saving && setModal(false)}
+        >
+          <form onSubmit={submit} className="space-y-4" noValidate>
+>>>>>>> eddc0ca8d6bca5ffaa8773bec87b9318ce5c21ca
             <Field label="Nama menu">
               <input
-                className={inputClass}
-                required
+                className={getInputStyle("nama_menu")}
+                type="text"
                 value={form.nama_menu}
+<<<<<<< HEAD
                 onChange={(e) => setForm({ ...form, nama_menu: e.target.value })}
+=======
+                onChange={(e) => {
+                  setForm({ ...form, nama_menu: e.target.value });
+                  if (fieldErrors.nama_menu)
+                    setFieldErrors({ ...fieldErrors, nama_menu: null });
+                }}
+>>>>>>> eddc0ca8d6bca5ffaa8773bec87b9318ce5c21ca
               />
+              {fieldErrors.nama_menu && (
+                <p className="mt-1 text-xs text-red-600 font-semibold">
+                  {fieldErrors.nama_menu}
+                </p>
+              )}
             </Field>
 
             <Field label="Kategori">
-              <input
-                className={inputClass}
+              <select
+                className={getInputStyle("kategori")}
                 value={form.kategori}
+<<<<<<< HEAD
                 onChange={(e) => setForm({ ...form, kategori: e.target.value })}
               />
+=======
+                onChange={(e) => {
+                  setForm({ ...form, kategori: e.target.value });
+                  if (fieldErrors.kategori)
+                    setFieldErrors({ ...fieldErrors, kategori: null });
+                }}
+              >
+                <option value="dimsum">Dimsum</option>
+                <option value="minuman">Minuman</option>
+              </select>
+              {fieldErrors.kategori && (
+                <p className="mt-1 text-xs text-red-600 font-semibold">
+                  {fieldErrors.kategori}
+                </p>
+              )}
+>>>>>>> eddc0ca8d6bca5ffaa8773bec87b9318ce5c21ca
             </Field>
 
             <Field label="Harga (rupiah)">
               <input
-                className={inputClass}
+                className={getInputStyle("harga")}
                 type="number"
                 min="0"
                 step="1"
-                required
                 value={form.harga}
+<<<<<<< HEAD
                 onChange={(e) => setForm({ ...form, harga: e.target.value })}
+=======
+                onChange={(e) => {
+                  setForm({ ...form, harga: e.target.value });
+                  if (fieldErrors.harga)
+                    setFieldErrors({ ...fieldErrors, harga: null });
+                }}
+>>>>>>> eddc0ca8d6bca5ffaa8773bec87b9318ce5c21ca
               />
+              {fieldErrors.harga && (
+                <p className="mt-1 text-xs text-red-600 font-semibold">
+                  {fieldErrors.harga}
+                </p>
+              )}
             </Field>
 
             <Field label="Deskripsi">
               <textarea
-                className={inputClass}
+                className={getInputStyle("deskripsi")}
                 rows="3"
                 value={form.deskripsi}
+<<<<<<< HEAD
                 onChange={(e) => setForm({ ...form, deskripsi: e.target.value })}
+=======
+                onChange={(e) => {
+                  setForm({ ...form, deskripsi: e.target.value });
+                  if (fieldErrors.deskripsi)
+                    setFieldErrors({ ...fieldErrors, deskripsi: null });
+                }}
+>>>>>>> eddc0ca8d6bca5ffaa8773bec87b9318ce5c21ca
               />
+              {fieldErrors.deskripsi && (
+                <p className="mt-1 text-xs text-red-600 font-semibold">
+                  {fieldErrors.deskripsi}
+                </p>
+              )}
             </Field>
 
-            <label className="flex min-h-12 items-center gap-3 rounded-xl bg-stone-50 p-3">
+            <label className="flex min-h-12 items-center gap-3 rounded-xl bg-stone-50 p-3 cursor-pointer">
               <input
                 type="checkbox"
                 className="h-5 w-5 accent-rose-600"
                 checked={form.tersedia}
                 onChange={(e) => setForm({ ...form, tersedia: e.target.checked })}
               />
-              Menu tersedia untuk dipesan
+              <span className="text-sm font-medium">Menu tersedia untuk dipesan</span>
             </label>
 
+<<<<<<< HEAD
             <div className="flex justify-end gap-3">
               <Button variant="secondary" onClick={() => setModal(false)}>
+=======
+            <div className="flex justify-end gap-3 pt-2">
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={saving}
+                onClick={() => setModal(false)}
+              >
+>>>>>>> eddc0ca8d6bca5ffaa8773bec87b9318ce5c21ca
                 Batal
               </Button>
               <Button type="submit" disabled={saving}>
+<<<<<<< HEAD
                 {saving && <LoaderCircle className="animate-spin" size={18} />}
                 Simpan Menu
+=======
+                {saving && (
+                  <LoaderCircle className="animate-spin" size={18} />
+                )}
+                {saving ? "Menyimpan..." : "Simpan Menu"}
+>>>>>>> eddc0ca8d6bca5ffaa8773bec87b9318ce5c21ca
               </Button>
             </div>
           </form>
