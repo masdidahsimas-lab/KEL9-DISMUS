@@ -1,4 +1,3 @@
-
 import {
   Coffee,
   LayoutDashboard,
@@ -8,19 +7,28 @@ import {
   X,
   Store,
   Home,
+  UserPlus,
+  History,
+  ShoppingCart,
+  Utensils,
 } from "lucide-react";
 
-const managerLinks = [
+// Navigasi internal staf (Manajer & Karyawan) dengan menu 'Kelola Menu' dan 'Resep Menu' terpisah
+const staffLinks = [
   ["dashboard", "Dashboard", LayoutDashboard],
   ["menus", "Kelola Menu", Coffee],
+  ["resep", "Resep Menu", Utensils],
   ["pesanan", "Pesanan", ShoppingBag],
-  ["stok", "Stok Bahan", Boxes],
+  ["stok", "Stok Bahan Baku", Boxes],
   ["laporan", "Laporan", BarChart3],
+  ["tambah_karyawan", "Tambah Pegawai", UserPlus],
 ];
 
 const customerLinks = [
   ["katalog", "Katalog", Home],
   ["dashboard", "Dashboard", LayoutDashboard],
+  ["checkout", "Checkout", ShoppingCart],
+  ["riwayat", "Riwayat Pembelian", History],
 ];
 
 export default function Sidebar({
@@ -30,8 +38,13 @@ export default function Sidebar({
   onClose,
   role = "pelanggan",
 }) {
-  const isManagerRole = role === "manager" || role === "karyawan";
-  const links = isManagerRole ? managerLinks : customerLinks;
+  const isManager = role === "manajer" || role === "manager";
+  const isStaff = isManager || role === "karyawan";
+
+  // Role Control: Karyawan dapat melihat 'Kelola Menu' & 'Resep Menu', namun 'Tambah Pegawai' disembunyikan
+  const links = isStaff
+    ? staffLinks.filter(([id]) => isManager || id !== "tambah_karyawan")
+    : customerLinks;
 
   const handleNavigate = (id) => {
     if (typeof onNavigate === "function") {
@@ -55,13 +68,13 @@ export default function Sidebar({
         />
       )}
 
-      {/* Sidebar */}
+      {/* Sidebar Container */}
       <aside
         className={`fixed inset-y-0 left-0 z-40 flex w-[260px] flex-col border-r border-stone-100 bg-white transition-transform duration-300 lg:translate-x-0 ${
           open ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        {/* Logo dan Identitas */}
+        {/* Logo & Identitas Header */}
         <div className="flex items-center gap-3 border-b border-stone-100 px-5 py-6">
           <div className="rounded-2xl bg-brand-600 p-3 text-white">
             <Store size={25} />
@@ -73,7 +86,7 @@ export default function Sidebar({
             </b>
 
             <p className="text-sm text-stone-500">
-              {isManagerRole ? "Sistem Manajemen" : "Customer Portal"}
+              {isStaff ? (isManager ? "Panel Manajer" : "Panel Karyawan") : "Customer Portal"}
             </p>
           </div>
 
@@ -87,11 +100,11 @@ export default function Sidebar({
           </button>
         </div>
 
-        {/* Daftar Menu */}
         <p className="px-7 pb-3 pt-7 text-xs font-bold uppercase tracking-widest text-stone-400">
           Menu utama
         </p>
 
+        {/* List Navigasi Sidebar */}
         <nav className="space-y-1 px-3" aria-label="Navigasi utama">
           {links.map(([id, label, Icon]) => (
             <button
@@ -111,16 +124,16 @@ export default function Sidebar({
           ))}
         </nav>
 
-        {/* Informasi Bawah Sidebar */}
+        {/* Panel Footer Information */}
         <div className="mt-auto p-4">
           <div className="rounded-2xl bg-brand-50 p-4">
             <b className="text-brand-700">
-              {isManagerRole ? "Panel DimsumKu" : "Belanja Dimsum"}
+              {isStaff ? "Panel DimsumKu" : "Belanja Dimsum"}
             </b>
 
             <p className="mt-2 text-sm leading-6 text-stone-600">
-              {isManagerRole
-                ? "Kelola menu, pesanan, dan stok dengan mudah."
+              {isStaff
+                ? "Kelola menu, resep bahan baku, pesanan, dan stok dengan mudah."
                 : "Pilih menu favorit, masukkan keranjang, dan checkout dengan mudah."}
             </p>
           </div>

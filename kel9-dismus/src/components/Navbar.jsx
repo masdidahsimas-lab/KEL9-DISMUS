@@ -1,10 +1,36 @@
 import React from 'react';
+import Swal from 'sweetalert2';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 
 export default function Navbar({ onOpenAuth, activeTab, setActiveTab }) {
   const { totalItems, setIsCartOpen } = useCart();
   const { user, logout } = useAuth();
+
+  // Konfirmasi SweetAlert2 sebelum Keluar
+  const handleLogout = async () => {
+    const result = await Swal.fire({
+      title: "Konfirmasi Keluar",
+      text: "Apakah Anda yakin ingin keluar dari akun ini?",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#e11d48",
+      cancelButtonColor: "#6b7280",
+      confirmButtonText: "Ya, Keluar!",
+      cancelButtonText: "Batal",
+    });
+
+    if (result.isConfirmed) {
+      await logout();
+      Swal.fire({
+        icon: "success",
+        title: "Berhasil Keluar",
+        text: "Anda telah keluar dari akun.",
+        timer: 1500,
+        showConfirmButton: false,
+      });
+    }
+  };
 
   return (
     <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md shadow-sm border-b border-orange-100">
@@ -60,8 +86,8 @@ export default function Navbar({ onOpenAuth, activeTab, setActiveTab }) {
                 {user.user_metadata?.full_name || user.email.split('@')[0]}
               </span>
               <button
-                onClick={logout}
-                className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg transition"
+                onClick={handleLogout}
+                className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg transition font-medium"
               >
                 Keluar
               </button>

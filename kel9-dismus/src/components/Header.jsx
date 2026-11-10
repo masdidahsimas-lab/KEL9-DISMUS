@@ -119,7 +119,7 @@ export default function Header({
 
             <button
               type="button"
-              onClick={handleLogoutClick}
+              onClick={onLogout}
               aria-label="Keluar dari akun"
               className="flex items-center gap-1 rounded-xl bg-rose-50 px-3 py-2 text-xs font-bold text-rose-600 transition hover:bg-rose-100"
             >
