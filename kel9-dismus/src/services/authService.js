@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 import { supabase } from "../lib/supabase";
 
 // ==========================================
@@ -61,7 +60,6 @@ async function ensureUserProfileExists(user, fullName, email) {
 // ==========================================
 
 // Mengambil pengguna yang sedang login
-=======
 import { createClient } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
 
@@ -70,7 +68,6 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 // Mengambil pengguna yang sedang login beserta profilnya
->>>>>>> 4009293f48265d99d3319b51d2fd851a7bf86bc5
 export async function getCurrentUser() {
   try {
     const { data: { user }, error } = await supabase.auth.getUser();
@@ -81,9 +78,7 @@ export async function getCurrentUser() {
     const profile = await fetchUserProfile(user.id);
     const formattedUser = formatUserData(user, profile);
 
-<<<<<<< HEAD
     return { data: formattedUser, error: null };
-=======
     if (profileError) throw profileError;
 
     const role = profile?.role || user.user_metadata?.role || "pelanggan";
@@ -101,7 +96,6 @@ export async function getCurrentUser() {
       },
       error: null,
     };
->>>>>>> 4009293f48265d99d3319b51d2fd851a7bf86bc5
   } catch (error) {
     return { data: null, error };
   }
@@ -117,7 +111,6 @@ export async function loginUser(email, password) {
 
     if (error) throw error;
 
-<<<<<<< HEAD
     const profile = await fetchUserProfile(data.user.id);
     const formattedUser = formatUserData(data.user, profile);
 
@@ -128,7 +121,7 @@ export async function loginUser(email, password) {
       },
       error: null,
     };
-=======
+
     if (data?.user) {
       const { data: profile, error: profileError } = await supabase
         .from("profiles")
@@ -153,7 +146,6 @@ export async function loginUser(email, password) {
     }
 
     return { data, error: null };
->>>>>>> 4009293f48265d99d3319b51d2fd851a7bf86bc5
   } catch (error) {
     return { data: null, error };
   }
@@ -182,7 +174,6 @@ export async function registerUser(email, password, fullName) {
 
     if (error) throw error;
 
-<<<<<<< HEAD
     if (data.user && data.session) {
       await ensureUserProfileExists(data.user, cleanFullName, cleanEmail);
 =======
