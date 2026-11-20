@@ -60,49 +60,6 @@ Alert & Notifikasi: SweetAlert2
 
 Backend, Database & Auth: Supabase (PostgreSQL, Supabase Auth, Supabase Realtime, Database Functions / RPC)
 
-📂 Struktur Direktori
-
-src/
-├── components/          # Komponen UI reusable
-│   ├── AuthModal.jsx        # Modal Login & Register (Email + Google)
-│   ├── CartDrawer.jsx       # Drawer keranjang belanja pelanggan
-│   ├── DashboardChart.jsx   # Grafik penjualan harian real-time
-│   ├── EmptyState.jsx       # Tampilan saat data kosong
-│   ├── Header.jsx           # Topbar navigasi, keranjang, refresh, & logout
-│   ├── MenuCard.jsx         # Kartu item menu pada katalog
-│   ├── Modal.jsx            # Komponen modal & form field dasar
-│   ├── Navbar.jsx           # Navigasi alternatif pelanggan
-│   ├── RecipeModal.jsx      # Modal pengaturan resep, skala porsi & validasi stok
-│   └── Sidebar.jsx          # Sidebar navigasi responsif (buka-tutup & scrollable)
-├── context/             # State management global
-│   ├── AuthContext.jsx      # Konteks sesi pengguna
-│   └── CartContext.jsx      # Konteks keranjang belanja
-├── lib/
-│   └── supabase.js          # Inisialisasi Supabase client
-├── pages/               # Halaman utama aplikasi
-│   ├── Dashboard.jsx        # Dashboard internal staf & manajer
-│   ├── MenuPage.jsx         # Halaman kelola daftar menu
-│   ├── OrdersPage.jsx       # Halaman manajemen pesanan masuk
-│   ├── ProfilePage.jsx      # Halaman profil pengguna
-│   ├── StockPage.jsx        # Halaman kelola stok bahan baku
-│   ├── manajer/
-│   │   ├── KelolaKaryawan.jsx   # CRUD akun karyawan + modal tambah staf
-│   │   ├── ManagerReports.jsx   # Laporan keuangan & penjualan
-│   │   └── MenuManagement.jsx   # Konfigurasi resep & stok porsi menu
-│   └── pelanggan/
-│       ├── Checkout.jsx         # Halaman pembayaran & konfirmasi pesanan
-│       ├── CustomerCatalog.jsx  # Katalog pemesanan dimsum
-│       ├── CustomerHistory.jsx  # Riwayat transaksi pelanggan
-│       └── DashboardCust.jsx    # Dashboard ringkasan pelanggan
-├── services/            # Integrasi API & logika bisnis Supabase
-│   ├── authService.js       # Login, register, Google OAuth, & addUserByManager
-│   ├── orderService.js      # Pengambilan & pembaruan status pesanan
-│   ├── recipeService.js     # Kalkulasi porsi & pemotongan stok bahan baku
-│   └── stockService.js      # CRUD data stok bahan baku
-└── utils/               # Fungsi bantuan
-    ├── format.js            # Pemformatan mata uang Rupiah & tanggal
-    └── validation.js        # Validasi input formulir
-
 
 🚀 Panduan Instalasi & Menjalankan Projek
 
