@@ -7,26 +7,29 @@ import Sidebar from "./components/Sidebar";
 import Header from "./components/Header";
 import AuthModal from "./components/AuthModal";
 import CartDrawer from "./components/CartDrawer";
+import ProfilePage from "./pages/ProfilePage";
 
-// Import Halaman Manajer & Karyawan
 import Dashboard from "./pages/Dashboard";
 import MenuPage from "./pages/MenuPage";
 import MenuManagement from "./pages/manajer/MenuManagement";
-import AddEmployee from "./pages/manajer/AddEmployee";
+import KelolaKaryawan from "./pages/manajer/KelolaKaryawan";
 import ManagerReports from "./pages/manajer/ManagerReports";
 import OrdersPage from "./pages/OrdersPage";
 import StockPage from "./pages/StockPage";
 
-// Import Halaman Pelanggan
 import DashboardCust from "./pages/pelanggan/DashboardCust";
 import Checkout from "./pages/pelanggan/Checkout";
 import CustomerHistory from "./pages/pelanggan/CustomerHistory";
 import CustomerCatalog from "./pages/pelanggan/CustomerCatalog";
 
 import { CartProvider, useCart } from "./context/CartContext";
-import { getMenus } from "./services/menuService";
+import { getMenusWithPortions } from "./services/recipeService";
 import { getOrders, updateOrderStatus } from "./services/orderService";
-import { getStock, saveStock as saveStockService, deleteStock as deleteStockService } from "./services/stockService";
+import {
+  getStock,
+  saveStock as saveStockService,
+  deleteStock as deleteStockService,
+} from "./services/stockService";
 import { getCurrentUser, logoutUser } from "./services/authService";
 
 const labels = {
@@ -39,28 +42,27 @@ const labels = {
   laporan: "Laporan Penjualan",
   checkout: "Checkout & Pembayaran",
   riwayat: "Riwayat Pembelian",
-  tambah_karyawan: "Tambah Pegawai",
+  kelola_karyawan: "Kelola Karyawan",
+  tambah_karyawan: "Kelola Karyawan",
+  profil: "Profil Saya",
 };
 
 const getUserRole = (user) => {
-  const roleFromMeta =
+  const rawRole =
     user?.user_metadata?.role ||
     user?.user_metadata?.akses ||
     user?.app_metadata?.role ||
     user?.app_metadata?.akses ||
-    "pelanggan";
+    "";
 
+  const roleFromMeta = String(rawRole).toLowerCase().trim();
   const validRoles = ["pelanggan", "karyawan", "manajer", "manager"];
-  const savedRole = localStorage.getItem("dimsum_user_role");
+  const savedRole = String(localStorage.getItem("dimsum_user_role") || "")
+    .toLowerCase()
+    .trim();
 
-  if (validRoles.includes(roleFromMeta)) {
-    return roleFromMeta;
-  }
-
-  if (validRoles.includes(savedRole)) {
-    return savedRole;
-  }
-
+  if (validRoles.includes(roleFromMeta)) return roleFromMeta;
+  if (validRoles.includes(savedRole)) return savedRole;
   return "pelanggan";
 };
 
@@ -93,57 +95,71 @@ function MainApp() {
     }
   }, []);
 
-  // Perbaikan: Opsi showSpinner agar refresh latar belakang tidak me-unmount halaman
-  const refresh = useCallback(async (showSpinner = false) => {
-    if (!supabase) {
-      setError("Konfigurasi Supabase belum ada.");
-      setLoading(false);
-      return;
-    }
+  const refresh = useCallback(
+    async (showSpinner = false) => {
+      if (!supabase) {
+        setError("Konfigurasi Supabase belum ada.");
+        setLoading(false);
+        return;
+      }
 
-    if (showSpinner) {
-      setLoading(true);
-    }
-    setError("");
+      if (showSpinner) setLoading(true);
+      setError("");
 
-    const [menusRes, ordersRes, stockRes, userRes] = await Promise.all([
-      getMenus(),
-      getOrders(),
-      getStock(),
-      getCurrentUser(),
-    ]);
+      try {
+        const [menuData, ordersRes, stockRes, userRes] = await Promise.all([
+          getMenusWithPortions(),
+          getOrders(),
+          getStock(),
+          getCurrentUser(),
+        ]);
 
-    const failed = [menusRes, ordersRes, stockRes].find((result) => result.error);
+        setMenus(menuData || []);
+        setOrders(ordersRes.data || []);
+        setStock(stockRes.data || []);
 
-    if (failed) {
-      setError(`Gagal mengambil data dari Supabase: ${failed.error.message}`);
-    } else {
-      setMenus(menusRes.data || []);
-      setOrders(ordersRes.data || []);
-      setStock(stockRes.data || []);
-    }
-
-    if (userRes.data) {
-      applyUser(userRes.data);
-    } else {
-      applyUser(null);
-      setRole("pelanggan");
-    }
-
-    setLoading(false);
-  }, [applyUser]);
+        if (userRes?.data) {
+          applyUser(userRes.data);
+        } else if (!userRes?.error) {
+          applyUser(null);
+          setRole("pelanggan");
+        }
+      } catch (err) {
+        setError(`Gagal mengambil data dari Supabase: ${err.message}`);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [applyUser]
+  );
 
   useEffect(() => {
     refresh(true);
 
-    if (supabase) {
-      const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+    if (!supabase) return;
+
+    const { data: authListener } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
         const nextUser = session?.user ?? null;
         applyUser(nextUser);
-      });
+      }
+    );
 
-      return () => authListener.subscription.unsubscribe();
-    }
+    const realtimeChannel = supabase
+      .channel("dimsumku-global-realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public" },
+        () => {
+          refresh(false);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      authListener.subscription.unsubscribe();
+      supabase.removeChannel(realtimeChannel);
+    };
   }, [applyUser, refresh]);
 
   useEffect(() => {
@@ -154,52 +170,43 @@ function MainApp() {
 
   async function handleCheckoutProcess() {
     if (checkoutLoading) return;
-
     if (!user) {
       setAuthModalOpen(true);
       return;
     }
-
     if (cart.length === 0) {
       setError("Keranjang belanja Anda masih kosong.");
       return;
     }
-
     setPage("checkout");
   }
 
   async function changeStatus(order, status) {
     const { error } = await updateOrderStatus(order.id, status);
-
     if (error) {
       setError(`Status pesanan gagal diubah: ${error.message}`);
       return;
     }
-
     setMessage("Status pesanan berhasil diperbarui.");
     refresh();
   }
 
   async function saveStock(data, id) {
     const { error } = await saveStockService(data, id);
-
     if (error) {
       setError(`Stok gagal disimpan: ${error.message}`);
       throw error;
     }
-
     setMessage("Data stok berhasil disimpan.");
     await refresh();
   }
 
   async function handleDeleteStock(id) {
     const { error } = await deleteStockService(id);
-
     if (error) {
       setError(`Stok gagal dihapus: ${error.message}`);
       return { error };
     }
-
     setStock((prevStock) => prevStock.filter((item) => item.id !== id));
     setMessage("Bahan baku berhasil dihapus.");
     return { error: null };
@@ -220,7 +227,6 @@ function MainApp() {
     if (!result.isConfirmed) return;
 
     const res = await logoutUser();
-
     if (res?.error) {
       Swal.fire({
         icon: "error",
@@ -246,7 +252,6 @@ function MainApp() {
   const isManager = role === "manajer" || role === "manager";
   const isManagerOrStaff = isManager || role === "karyawan";
 
-  // Perbaikan: Rute switch-case yang bersih tanpa duplikasi
   const renderManagerContent = () => {
     switch (page) {
       case "dashboard":
@@ -258,8 +263,11 @@ function MainApp() {
             stock={stock}
             user={user}
             onNavigate={setPage}
+            onRefresh={refresh}
           />
         );
+      case "profil":
+        return <ProfilePage user={user} role={role} onRefresh={refresh} />;
       case "menus":
         return (
           <MenuPage
@@ -271,6 +279,15 @@ function MainApp() {
         );
       case "resep":
         return <MenuManagement onRefresh={refresh} />;
+      case "pesanan":
+        return (
+          <OrdersPage
+            orders={orders}
+            onStatus={changeStatus}
+            onError={setError}
+            onRefresh={refresh}
+          />
+        );
       case "stok":
         return (
           <StockPage
@@ -283,9 +300,10 @@ function MainApp() {
         );
       case "laporan":
         return <ManagerReports orders={orders} />;
+      case "kelola_karyawan":
       case "tambah_karyawan":
         return isManager ? (
-          <AddEmployee />
+          <KelolaKaryawan />
         ) : (
           <Dashboard
             userRole={role}
@@ -294,6 +312,7 @@ function MainApp() {
             stock={stock}
             user={user}
             onNavigate={setPage}
+            onRefresh={refresh}
           />
         );
       default:
@@ -305,6 +324,7 @@ function MainApp() {
             stock={stock}
             user={user}
             onNavigate={setPage}
+            onRefresh={refresh}
           />
         );
     }
@@ -322,6 +342,8 @@ function MainApp() {
             onNavigate={setPage}
           />
         );
+      case "profil":
+        return <ProfilePage user={user} role={role} onRefresh={refresh} />;
       case "checkout":
         return (
           <Checkout

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   FileText,
   Calendar,
@@ -11,43 +11,57 @@ import {
 import Swal from "sweetalert2";
 
 import { getReportData } from "../../services/reportService";
+import { supabase } from "../../lib/supabase";
 import { rupiah, tanggal } from "../../utils/format";
+
+// --- Helper Ekstra Aman: Konversi Tanggal ke Angka Absolut (YYYYMMDD) ---
+function getOrderYYYYMMDD(val) {
+  if (!val) return 0;
+  let d = new Date(val);
+  if (isNaN(d.getTime())) d = new Date(Number(val));
+  if (isNaN(d.getTime())) {
+    if (typeof val === "string") {
+      const parts = val.split(/[-/]/);
+      if (parts.length === 3 && parts[2].length === 4) {
+        d = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+      }
+    }
+  }
+  if (isNaN(d.getTime())) return 0;
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return Number(`${y}${m}${day}`);
+}
+
+function getInputYYYYMMDD(dateStr) {
+  if (!dateStr) return 0;
+  if (dateStr.includes("-") && dateStr.split("-")[0].length === 4) {
+    return Number(dateStr.replace(/-/g, ""));
+  }
+  const parts = dateStr.split(/[-/]/);
+  if (parts.length === 3 && parts[2].length === 4) {
+    return Number(`${parts[2]}${parts[1]}${parts[0]}`);
+  }
+  return 0;
+}
+// ----------------------------------------------------------------------
 
 export default function ManagerReports({ orders: initialOrders = [] }) {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [loading, setLoading] = useState(false);
-  const [reportData, setReportData] = useState({
-    orders: [],
-    totalOrders: 0,
-    completedCount: 0,
-    revenue: 0,
-  });
+  const [fetchedOrders, setFetchedOrders] = useState(null);
 
   // 1. Fungsi Mengambil Data Laporan dari Supabase
-  const fetchReport = async () => {
+  const fetchReport = async (start = startDate, end = endDate) => {
     setLoading(true);
     try {
-      const data = await getReportData(startDate || null, endDate || null);
-      
-      // Jika dari database ada data, gunakan data tersebut
-      if (data && data.orders && data.orders.length > 0) {
-        setReportData(data);
-      } else if (initialOrders && initialOrders.length > 0) {
-        // Fallback ke data orders dari props App.jsx jika ada
-        const completed = initialOrders.filter((o) => o.status === "Selesai");
-        const totalRev = completed.reduce(
-          (sum, o) => sum + Number(o.total_harga || 0),
-          0
-        );
-        setReportData({
-          orders: initialOrders,
-          totalOrders: initialOrders.length,
-          completedCount: completed.length,
-          revenue: totalRev,
-        });
+      const data = await getReportData(start || null, end || null);
+      if (data && data.orders) {
+        setFetchedOrders(data.orders);
       } else {
-        setReportData(data);
+        setFetchedOrders([]);
       }
     } catch (err) {
       console.error("Gagal memuat laporan:", err);
@@ -62,31 +76,89 @@ export default function ManagerReports({ orders: initialOrders = [] }) {
     }
   };
 
-  // 2. Load data secara otomatis saat halaman pertama kali diakses
+  // 2. Load data awal & Realtime Subscription Supabase
   useEffect(() => {
-    fetchReport();
-  }, []);
+    fetchReport(startDate, endDate);
 
-  // 3. Handler Tombol Filter / Generate Laporan
+    const channel = supabase
+      .channel("manager-reports-realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public" },
+        () => {
+          fetchReport(startDate, endDate);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startDate, endDate]);
+
+  // 3. Filter ketat sisi klien menggunakan angka murni
+  const displayOrders = useMemo(() => {
+    const rawOrders =
+      fetchedOrders !== null ? fetchedOrders : initialOrders || [];
+
+    if (!startDate && !endDate) return rawOrders;
+
+    const startNum = startDate ? getInputYYYYMMDD(startDate) : 0;
+    const endNum = endDate ? getInputYYYYMMDD(endDate) : 99999999;
+
+    return rawOrders.filter((item) => {
+      const rawDate = item.tanggal_pesanan || item.created_at;
+      const orderNum = getOrderYYYYMMDD(rawDate);
+
+      if (orderNum === 0) return false;
+      if (startNum > 0 && orderNum < startNum) return false;
+      if (endNum < 99999999 && orderNum > endNum) return false;
+
+      return true;
+    });
+  }, [fetchedOrders, initialOrders, startDate, endDate]);
+
+  // Kalkulasi statistik dari data yang telah terfilter
+  const completedOrders = useMemo(
+    () => displayOrders.filter((o) => o.status === "Selesai"),
+    [displayOrders]
+  );
+
+  const revenue = useMemo(
+    () =>
+      completedOrders.reduce(
+        (sum, o) => sum + Number(o.total_harga || 0),
+        0
+      ),
+    [completedOrders]
+  );
+
+  // 4. Handler Tombol Filter / Generate Laporan
   const handleFilter = (e) => {
     e.preventDefault();
-    fetchReport();
+    fetchReport(startDate, endDate);
   };
 
-  // 4. Handler Ekspor Data Ke File CSV
+  // 5. Handler Ekspor Data Ke File CSV
   const handleDownloadCSV = () => {
-    if (reportData.orders.length === 0) {
+    if (displayOrders.length === 0) {
       Swal.fire({
         icon: "warning",
         title: "Data Kosong",
-        text: "Tidak ada data transaksi pesanan untuk diekspor.",
+        text: "Tidak ada data transaksi pesanan untuk diekspor pada rentang tanggal ini.",
         confirmButtonColor: "#d97706",
       });
       return;
     }
 
-    const headers = ["ID / Kode Pesanan", "Tanggal", "Status", "Total Harga (Rp)"];
-    const rows = reportData.orders.map((o) => [
+    const headers = [
+      "ID / Kode Pesanan",
+      "Tanggal",
+      "Status",
+      "Total Harga (Rp)",
+    ];
+    const rows = displayOrders.map((o) => [
       o.kode_pesanan || `#${o.id}`,
       tanggal(o.tanggal_pesanan || o.created_at),
       o.status || "Pending",
@@ -96,7 +168,9 @@ export default function ManagerReports({ orders: initialOrders = [] }) {
     const csvContent =
       "data:text/csv;charset=utf-8,\uFEFF" +
       [headers, ...rows]
-        .map((e) => e.map((val) => `"${String(val).replaceAll('"', '""')}"`).join(","))
+        .map((e) =>
+          e.map((val) => `"${String(val).replaceAll('"', '""')}"`).join(",")
+        )
         .join("\n");
 
     const encodedUri = encodeURI(csvContent);
@@ -143,7 +217,7 @@ export default function ManagerReports({ orders: initialOrders = [] }) {
         >
           <div className="sm:col-span-5">
             <label className="mb-1 block text-xs font-semibold text-stone-600">
-              Tanggal Mulai
+              Tanggal Mulai <span className="text-rose-500">*</span>
             </label>
             <div className="relative">
               <Calendar
@@ -152,6 +226,7 @@ export default function ManagerReports({ orders: initialOrders = [] }) {
               />
               <input
                 type="date"
+                required
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
                 className="w-full rounded-2xl border border-stone-200 py-2.5 pl-10 pr-4 text-xs font-medium text-stone-700 outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
@@ -161,7 +236,7 @@ export default function ManagerReports({ orders: initialOrders = [] }) {
 
           <div className="sm:col-span-5">
             <label className="mb-1 block text-xs font-semibold text-stone-600">
-              Tanggal Selesai
+              Tanggal Selesai <span className="text-rose-500">*</span>
             </label>
             <div className="relative">
               <Calendar
@@ -170,6 +245,7 @@ export default function ManagerReports({ orders: initialOrders = [] }) {
               />
               <input
                 type="date"
+                required
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
                 className="w-full rounded-2xl border border-stone-200 py-2.5 pl-10 pr-4 text-xs font-medium text-stone-700 outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
@@ -204,7 +280,7 @@ export default function ManagerReports({ orders: initialOrders = [] }) {
                 Total Transaksi
               </span>
               <p className="mt-1 text-2xl font-black text-stone-800">
-                {reportData.totalOrders}{" "}
+                {displayOrders.length}{" "}
                 <span className="text-xs font-bold text-stone-500">
                   Pesanan
                 </span>
@@ -222,7 +298,7 @@ export default function ManagerReports({ orders: initialOrders = [] }) {
                 Total Pendapatan (Pesanan Selesai)
               </span>
               <p className="mt-1 text-2xl font-black text-emerald-600">
-                {rupiah(reportData.revenue)}
+                {rupiah(revenue)}
               </p>
             </div>
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700">
@@ -254,20 +330,20 @@ export default function ManagerReports({ orders: initialOrders = [] }) {
                       Memuat data laporan...
                     </td>
                   </tr>
-                ) : reportData.orders.length === 0 ? (
+                ) : displayOrders.length === 0 ? (
                   <tr>
                     <td colSpan={4} className="py-8 text-center text-stone-400">
                       <FileText className="mx-auto mb-2 opacity-40" size={36} />
                       <p className="font-semibold text-stone-600">
-                        Belum ada transaksi
+                        Tidak ada transaksi
                       </p>
                       <p className="text-[11px] text-stone-400">
-                        Pesanan yang dibuat oleh pelanggan akan otomatis muncul di sini.
+                        Tidak ada pesanan yang ditemukan pada rentang tanggal tersebut.
                       </p>
                     </td>
                   </tr>
                 ) : (
-                  reportData.orders.map((o) => (
+                  displayOrders.map((o) => (
                     <tr
                       key={o.id}
                       className="transition hover:bg-stone-50/60"

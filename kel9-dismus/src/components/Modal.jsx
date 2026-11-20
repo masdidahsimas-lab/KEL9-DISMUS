@@ -1,4 +1,3 @@
-
 import { X } from "lucide-react";
 
 export default function Modal({ title, onClose, children }) {
@@ -37,11 +36,11 @@ export default function Modal({ title, onClose, children }) {
 export const inputClass =
   "min-h-12 w-full rounded-xl border border-stone-200 bg-white px-4 py-3 text-base focus:border-brand-500 focus:outline-none";
 
-export function Field({ label, children }) {
+export function Field({ label, required = true, children }) {
   return (
     <label className="block space-y-2">
       <span className="text-sm font-bold text-stone-700">
-        {label}
+        {label} {required && <span className="text-rose-500">*</span>}
       </span>
       {children}
     </label>

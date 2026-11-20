@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Search, Plus, Check, ShoppingBag, UtensilsCrossed, AlertCircle, ArrowRight } from "lucide-react";
+import { Search, Plus, Check, ShoppingBag, UtensilsCrossed, AlertCircle, ArrowRight, Boxes } from "lucide-react";
 import { useCart } from "../../context/CartContext";
 
 export default function CustomerCatalog({ menus = [], onCheckout }) {
@@ -9,7 +9,6 @@ export default function CustomerCatalog({ menus = [], onCheckout }) {
 
   const { addToCart, totalItems, totalPrice, setCartOpen } = useCart();
 
-  // 1. Ambil kategori unik secara dinamis langsung dari data database
   const categories = useMemo(() => {
     const list = menus
       .map((item) => item.kategori)
@@ -17,7 +16,6 @@ export default function CustomerCatalog({ menus = [], onCheckout }) {
     return ["Semua", ...Array.from(new Set(list))];
   }, [menus]);
 
-  // 2. Filter menu berdasarkan pencarian & kategori dari DB
   const filteredMenus = useMemo(() => {
     return menus.filter((item) => {
       const matchCategory =
@@ -29,7 +27,6 @@ export default function CustomerCatalog({ menus = [], onCheckout }) {
     });
   }, [menus, selectedCategory, search]);
 
-  // 3. Fungsi tambah ke keranjang dengan pemetaan kolom DB Supabase
   const handleAddToCart = (item) => {
     addToCart({
       id: item.id,
@@ -38,13 +35,11 @@ export default function CustomerCatalog({ menus = [], onCheckout }) {
       kategori: item.kategori,
     });
 
-    // Feedback animasi tombol
     setAddedId(item.id);
     setTimeout(() => setAddedId(null), 1200);
   };
 
   return (
-    /* Diberikan pb-28 agar saat scroll ke paling bawah, menu tidak pernah tertutup bar keranjang */
     <div className="space-y-6 pb-28">
       {/* Banner Hero */}
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-amber-500 to-amber-600 p-6 text-white shadow-lg sm:p-8">
@@ -56,7 +51,7 @@ export default function CustomerCatalog({ menus = [], onCheckout }) {
             Nikmati Dimsum Hangat Pilihanmu
           </h1>
           <p className="mt-2 text-xs text-amber-100 sm:text-sm">
-            Pilih varian dimsum favorit langsung dari dapur kami. Tambahkan ke keranjang dan lakukan pemesanan dengan mudah.
+            Pilih varian dimsum favorit langsung dari dapur kami. Porsi dihitung otomatis berdasarkan ketersediaan bahan baku segar.
           </p>
         </div>
         <div className="absolute -bottom-6 -right-6 text-8xl opacity-20 pointer-events-none select-none sm:text-9xl">
@@ -64,9 +59,8 @@ export default function CustomerCatalog({ menus = [], onCheckout }) {
         </div>
       </div>
 
-      {/* Bar Pencarian & Filter Kategori Dinamis */}
+      {/* Bar Pencarian & Filter */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        {/* Kategori Tabs */}
         <div className="flex flex-wrap gap-2">
           {categories.map((cat) => (
             <button
@@ -83,7 +77,6 @@ export default function CustomerCatalog({ menus = [], onCheckout }) {
           ))}
         </div>
 
-        {/* Input Pencarian */}
         <div className="relative w-full sm:w-72">
           <Search className="absolute left-3 top-2.5 text-stone-400" size={18} />
           <input
@@ -96,23 +89,22 @@ export default function CustomerCatalog({ menus = [], onCheckout }) {
         </div>
       </div>
 
-      {/* Grid Katalog Menu dari Database */}
+      {/* Grid Katalog Menu */}
       {filteredMenus.length === 0 ? (
         <div className="flex min-h-[250px] flex-col items-center justify-center rounded-3xl border border-dashed border-stone-200 bg-white p-8 text-center">
           <UtensilsCrossed className="mb-3 text-stone-300" size={48} />
           <p className="text-sm font-semibold text-stone-600">
             {menus.length === 0
-              ? "Belum ada menu di database Supabase."
+              ? "Belum ada menu di database."
               : "Menu tidak ditemukan."}
-          </p>
-          <p className="mt-1 text-xs text-stone-400">
-            Coba ganti kata kunci atau pilih kategori lain.
           </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {filteredMenus.map((item) => {
-            const isAvailable = item.tersedia !== false;
+            const hasRecipe = item.has_recipe;
+            const estimasiPorsi = Number(item.estimasi_porsi || 0);
+            const isAvailable = item.tersedia !== false && (!hasRecipe || estimasiPorsi > 0);
 
             return (
               <div
@@ -120,26 +112,35 @@ export default function CustomerCatalog({ menus = [], onCheckout }) {
                 className="group flex flex-col justify-between overflow-hidden rounded-2xl border border-stone-100 bg-white p-4 shadow-sm transition hover:shadow-md"
               >
                 <div>
-                  {/* Thumbnail / Header Card */}
                   <div className="relative mb-3 flex h-36 w-full items-center justify-center rounded-xl bg-amber-50/60 text-5xl">
                     <span>🥟</span>
-                    
-                    {/* Badge Kategori */}
+
                     {item.kategori && (
                       <span className="absolute left-2 top-2 rounded-lg bg-white/90 px-2 py-0.5 text-[10px] font-bold text-amber-800 backdrop-blur-sm">
                         {item.kategori}
                       </span>
                     )}
 
-                    {/* Badge Status Stok */}
-                    {!isAvailable && (
-                      <span className="absolute right-2 top-2 flex items-center gap-1 rounded-lg bg-rose-500 px-2 py-0.5 text-[10px] font-bold text-white shadow">
-                        <AlertCircle size={12} /> Stok Habis
-                      </span>
-                    )}
+                    {/* Badge Status Porsi Terkini */}
+                    <span
+                      className={`absolute right-2 top-2 flex items-center gap-1 rounded-lg px-2 py-0.5 text-[10px] font-bold shadow ${
+                        isAvailable
+                          ? "bg-emerald-600 text-white"
+                          : "bg-rose-500 text-white"
+                      }`}
+                    >
+                      {isAvailable ? (
+                        <>
+                          <Boxes size={12} /> Tersedia {estimasiPorsi > 0 ? `${estimasiPorsi} Porsi` : ""}
+                        </>
+                      ) : (
+                        <>
+                          <AlertCircle size={12} /> Stok Habis
+                        </>
+                      )}
+                    </span>
                   </div>
 
-                  {/* Info Menu */}
                   <h3 className="font-bold text-stone-800 group-hover:text-amber-600 transition">
                     {item.nama_menu}
                   </h3>
@@ -148,7 +149,6 @@ export default function CustomerCatalog({ menus = [], onCheckout }) {
                   </p>
                 </div>
 
-                {/* Footer Card: Harga & Tombol Beli */}
                 <div className="mt-4 flex items-center justify-between border-t border-stone-100 pt-3">
                   <div>
                     <span className="block text-[10px] text-stone-400">Harga</span>
@@ -185,7 +185,7 @@ export default function CustomerCatalog({ menus = [], onCheckout }) {
         </div>
       )}
 
-      {/* Floating Bottom Bar Keranjang Ramping & Tidak Mengganggu Viewport */}
+      {/* Floating Bottom Bar Keranjang */}
       {totalItems > 0 && (
         <div className="fixed bottom-4 left-1/2 z-40 flex w-[92%] max-w-lg -translate-x-1/2 items-center justify-between rounded-full bg-stone-900/95 px-5 py-3 text-white shadow-2xl backdrop-blur-md border border-stone-800 transition-all duration-300">
           <div className="flex items-center gap-3">

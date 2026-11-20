@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Plus,
   Search,
@@ -7,7 +7,7 @@ import {
   Coffee,
   LoaderCircle,
 } from "lucide-react";
-import Swal from "sweetalert2"; // Import SweetAlert2
+import Swal from "sweetalert2";
 
 import Modal, { Button, Field, inputClass } from "../components/Modal";
 import EmptyState from "../components/EmptyState";
@@ -17,6 +17,7 @@ import {
   validateInput,
   VALID_MENU_CATEGORIES,
 } from "../utils/validation";
+import { supabase } from "../lib/supabase";
 
 export default function MenuPage({
   menus = [],
@@ -38,8 +39,25 @@ export default function MenuPage({
     tersedia: true,
   });
 
-  // State untuk menyimpan pesan error per input field (Validasi Teks Input)
   const [fieldErrors, setFieldErrors] = useState({});
+
+  // Realtime listener untuk perubahan data Menu di Supabase
+  useEffect(() => {
+    const channel = supabase
+      .channel("menus-realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public" },
+        () => {
+          onRefresh?.();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   // Mencari menu berdasarkan nama atau kategori
   const filtered = useMemo(
@@ -55,7 +73,7 @@ export default function MenuPage({
   // Membuka modal tambah atau edit menu
   function open(item = null) {
     setEdit(item);
-    setFieldErrors({}); // Reset error saat modal dibuka
+    setFieldErrors({});
 
     setForm(
       item
@@ -128,15 +146,13 @@ export default function MenuPage({
     });
     if (deskripsiError) errors.deskripsi = deskripsiError;
 
-    // Jika ada error input
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
 
-      // SweetAlert Pop-up di ATAS Modal
       Swal.fire({
         icon: "error",
         title: "Input Tidak Valid",
-        text: Object.values(errors)[0], // Menampilkan error pertama
+        text: Object.values(errors)[0],
         confirmButtonColor: "#e11d48",
       });
       return;
@@ -169,7 +185,6 @@ export default function MenuPage({
 
       setModal(false);
 
-      // Alert Sukses SweetAlert
       Swal.fire({
         icon: "success",
         title: "Berhasil!",
@@ -242,7 +257,6 @@ export default function MenuPage({
     }
   }
 
-  // Helper untuk menambahkan border merah pada input yang error
   const getInputStyle = (fieldName) =>
     `${inputClass} ${
       fieldErrors[fieldName]
@@ -357,9 +371,10 @@ export default function MenuPage({
           title={edit ? "Edit Menu" : "Tambah Menu Baru"}
           onClose={() => !saving && setModal(false)}
         >
-          <form onSubmit={submit} className="space-y-4" noValidate>
+          <form onSubmit={submit} className="space-y-4">
             <Field label="Nama menu">
               <input
+                required
                 className={getInputStyle("nama_menu")}
                 type="text"
                 value={form.nama_menu}
@@ -378,6 +393,7 @@ export default function MenuPage({
 
             <Field label="Kategori">
               <select
+                required
                 className={getInputStyle("kategori")}
                 value={form.kategori}
                 onChange={(e) => {
@@ -398,6 +414,7 @@ export default function MenuPage({
 
             <Field label="Harga (rupiah)">
               <input
+                required
                 className={getInputStyle("harga")}
                 type="number"
                 min="0"
@@ -418,6 +435,7 @@ export default function MenuPage({
 
             <Field label="Deskripsi">
               <textarea
+                required
                 className={getInputStyle("deskripsi")}
                 rows="3"
                 value={form.deskripsi}
@@ -443,7 +461,9 @@ export default function MenuPage({
                   setForm({ ...form, tersedia: e.target.checked })
                 }
               />
-              <span className="text-sm font-medium">Menu tersedia untuk dipesan</span>
+              <span className="text-sm font-medium">
+                Menu tersedia untuk dipesan
+              </span>
             </label>
 
             <div className="flex justify-end gap-3 pt-2">

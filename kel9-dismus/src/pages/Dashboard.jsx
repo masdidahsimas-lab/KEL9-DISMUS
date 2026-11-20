@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
   Coffee,
   ShoppingBag,
@@ -6,6 +6,7 @@ import {
   Boxes,
   BarChart3,
   Clock3,
+  Users,
 } from "lucide-react";
 
 import StatCard from "../components/StatCard";
@@ -13,6 +14,7 @@ import EmptyState from "../components/EmptyState";
 import StatusBadge from "../components/StatusBadge";
 import DashboardChart from "../components/DashboardChart";
 import { rupiah, tanggal } from "../utils/format";
+import { supabase } from "../lib/supabase";
 
 export default function Dashboard({
   userRole = "manajer",
@@ -21,7 +23,56 @@ export default function Dashboard({
   pesanan = orders, // Fallback otomatis ke orders jika pesanan tidak dioper
   stock = [],
   onNavigate,
+  onRefresh,
 }) {
+  const [karyawanList, setKaryawanList] = useState([]);
+
+  // Ambil data user dengan status 'karyawan' dari Supabase
+  const fetchKaryawan = async () => {
+    try {
+      let { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("status", "karyawan");
+
+      // Fallback jika nama tabel di Supabase adalah 'users'
+      if (error) {
+        const fallback = await supabase
+          .from("users")
+          .select("*")
+          .eq("status", "karyawan");
+        data = fallback.data;
+      }
+
+      if (data) {
+        setKaryawanList(data);
+      }
+    } catch (err) {
+      console.error("Gagal memuat data karyawan:", err);
+    }
+  };
+
+  // Realtime listener untuk Dashboard & data Karyawan
+  useEffect(() => {
+    fetchKaryawan();
+
+    const channel = supabase
+      .channel("dashboard-realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public" },
+        () => {
+          fetchKaryawan();
+          onRefresh?.();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
   // Gunakan data orders yang valid
   const orderList = pesanan.length > 0 ? pesanan : orders;
 
@@ -51,8 +102,16 @@ export default function Dashboard({
 
   // Take 5 pesanan terbaru berdasarkan waktu pembuatan
   const latestOrders = [...orderList]
-    .sort((a, b) => new Date(b.created_at || b.tanggal_pesanan) - new Date(a.created_at || a.tanggal_pesanan))
+    .sort(
+      (a, b) =>
+        new Date(b.created_at || b.tanggal_pesanan) -
+        new Date(a.created_at || a.tanggal_pesanan)
+    )
     .slice(0, 5);
+
+  const isManager =
+    userRole?.toLowerCase() === "manajer" ||
+    userRole?.toLowerCase() === "manager";
 
   return (
     <div className="space-y-8">
@@ -123,6 +182,55 @@ export default function Dashboard({
       <section>
         <DashboardChart orders={orderList} />
       </section>
+
+      {/* Daftar Karyawan (Khusus Manajer - Status 'karyawan') */}
+      {isManager && (
+        <section className="overflow-hidden rounded-3xl border border-stone-200/80 bg-white shadow-sm">
+          <div className="flex items-center justify-between border-b border-stone-100 p-5">
+            <div className="flex items-center gap-3">
+              <div className="rounded-xl bg-blue-100 p-2 text-blue-700">
+                <Users size={20} />
+              </div>
+              <div>
+                <h2 className="font-extrabold text-stone-800">
+                  Daftar Karyawan Resto
+                </h2>
+                <p className="mt-0.5 text-xs text-stone-500">
+                  Akun terdaftar dengan status karyawan ({karyawanList.length} orang)
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {karyawanList.length === 0 ? (
+            <EmptyState
+              title="Belum ada data karyawan"
+              description="Pengguna dengan status 'karyawan' akan muncul secara otomatis di sini."
+            />
+          ) : (
+            <div className="divide-y divide-stone-100">
+              {karyawanList.map((k) => (
+                <div
+                  key={k.id}
+                  className="flex flex-col justify-between gap-3 px-5 py-4 sm:flex-row sm:items-center hover:bg-stone-50/50 transition"
+                >
+                  <div>
+                    <b className="text-sm text-stone-800">
+                      {k.nama || k.full_name || k.email || `Karyawan #${k.id}`}
+                    </b>
+                    <p className="mt-0.5 text-xs text-stone-400">
+                      {k.email || k.no_hp || k.phone || "-"}
+                    </p>
+                  </div>
+                  <span className="w-fit rounded-full bg-blue-50 px-3 py-1 text-xs font-bold capitalize text-blue-700 border border-blue-200">
+                    {k.status}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
       {/* Detail Pesanan Terbaru & Akses Stok */}
       <div className="grid gap-6 xl:grid-cols-[1.5fr_1fr]">

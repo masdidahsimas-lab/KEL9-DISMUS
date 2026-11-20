@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Search,
   QrCode,
@@ -15,6 +15,7 @@ import {
 import EmptyState from "../components/EmptyState";
 import StatusBadge from "../components/StatusBadge";
 import { rupiah, tanggal } from "../utils/format";
+import { supabase } from "../lib/supabase";
 
 const STATUS_OPTIONS = [
   "Menunggu",
@@ -47,11 +48,34 @@ const getPaymentMethod = (order) => {
   return "Cash";
 };
 
-export default function OrdersPage({ orders = [], onStatus, onError }) {
+export default function OrdersPage({
+  orders = [],
+  onStatus,
+  onError,
+  onRefresh,
+}) {
   const [query, setQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState("Semua");
   const [filterPayment, setFilterPayment] = useState("Semua");
   const [updatingId, setUpdatingId] = useState(null);
+
+  // Realtime listener untuk perubahan status dan pesanan baru
+  useEffect(() => {
+    const channel = supabase
+      .channel("orders-realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public" },
+        () => {
+          onRefresh?.();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   // Filter Data Pesanan
   const filteredOrders = useMemo(() => {
@@ -79,7 +103,8 @@ export default function OrdersPage({ orders = [], onStatus, onError }) {
   const stats = useMemo(() => {
     return {
       total: orders.length,
-      menunggu: orders.filter((o) => ["Menunggu", "Pending"].includes(o.status)).length,
+      menunggu: orders.filter((o) => ["Menunggu", "Pending"].includes(o.status))
+        .length,
       dikonfirmasi: orders.filter((o) => o.status === "Dikonfirmasi").length,
       diproses: orders.filter((o) => o.status === "Diproses").length,
       selesai: orders.filter((o) => o.status === "Selesai").length,
@@ -247,10 +272,7 @@ export default function OrdersPage({ orders = [], onStatus, onError }) {
                   const nextStatus = NEXT_STATUS_MAP[o.status];
 
                   return (
-                    <tr
-                      key={o.id}
-                      className="transition hover:bg-stone-50/70"
-                    >
+                    <tr key={o.id} className="transition hover:bg-stone-50/70">
                       <td className="px-5 py-4">
                         <span className="font-extrabold text-stone-800">
                           {o.kode_pesanan || `#${o.id}`}
@@ -307,7 +329,11 @@ export default function OrdersPage({ orders = [], onStatus, onError }) {
 
                           <select
                             className="rounded-xl border border-stone-200 bg-white px-2.5 py-1.5 text-[11px] font-bold text-stone-700 outline-none transition focus:border-amber-500 disabled:opacity-50 cursor-pointer shadow-2xs shrink-0"
-                            value={o.status === "Pending" ? "Menunggu" : (o.status || "Menunggu")}
+                            value={
+                              o.status === "Pending"
+                                ? "Menunggu"
+                                : o.status || "Menunggu"
+                            }
                             disabled={updatingId === o.id}
                             onChange={(e) =>
                               handleStatusChange(o, e.target.value)

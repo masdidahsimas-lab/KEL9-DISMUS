@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { supabase } from "../lib/supabase";
 import { rupiah } from "../utils/format";
 
@@ -27,14 +27,9 @@ const formatChartLabel = (rawDateInput) => {
 
 export default function DashboardChart({ orders = [] }) {
   const [fetchedOrders, setFetchedOrders] = useState([]);
+  const [hasRealtimeSync, setHasRealtimeSync] = useState(false);
 
-  useEffect(() => {
-    if (orders.length === 0) {
-      loadSalesStats();
-    }
-  }, [orders]);
-
-  const loadSalesStats = async () => {
+  const loadSalesStats = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from("pesanan")
@@ -47,16 +42,40 @@ export default function DashboardChart({ orders = [] }) {
     } catch (err) {
       console.error("Gagal memuat data grafik:", err);
     }
-  };
+  }, []);
 
-  const sourceOrders = orders.length > 0 ? orders : fetchedOrders;
+  useEffect(() => {
+    if (orders.length === 0) {
+      loadSalesStats();
+    }
+
+    if (!supabase) return;
+
+    const channel = supabase
+      .channel("dashboard-chart-pesanan-realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "pesanan" },
+        () => {
+          setHasRealtimeSync(true);
+          loadSalesStats();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [orders.length, loadSalesStats]);
+
+  const sourceOrders =
+    hasRealtimeSync || orders.length === 0 ? fetchedOrders : orders;
 
   // Mengolah data transaksi menjadi grafik harian yang akurat
   const chartData = useMemo(() => {
     if (!sourceOrders || sourceOrders.length === 0) return [];
 
     const grouped = sourceOrders.reduce((acc, curr) => {
-      // Abaikan pesanan yang dibatalkan
       if (curr.status === "Dibatalkan") return acc;
 
       const rawDate = curr.tanggal_pesanan || curr.created_at;
@@ -72,7 +91,7 @@ export default function DashboardChart({ orders = [] }) {
         label: key,
         value: grouped[key],
       }))
-      .slice(-7); // Ambil 7 periode transaksi terakhir
+      .slice(-7);
   }, [sourceOrders]);
 
   const maxValue = Math.max(...chartData.map((d) => d.value), 100000);
@@ -85,7 +104,7 @@ export default function DashboardChart({ orders = [] }) {
             Grafik Penjualan Harian
           </h3>
           <p className="mt-0.5 text-xs text-stone-400">
-            Ringkasan pendapatan dari transaksi aktif & selesai
+            Ringkasan pendapatan dari transaksi aktif & selesai (real-time)
           </p>
         </div>
       </div>
@@ -103,18 +122,15 @@ export default function DashboardChart({ orders = [] }) {
                 key={index}
                 className="group flex flex-1 flex-col items-center justify-end h-full"
               >
-                {/* Tooltip Hover Nominal Transaksi */}
                 <span className="mb-1 rounded-md bg-stone-800 px-1.5 py-0.5 text-[10px] font-bold text-white opacity-0 transition-opacity group-hover:opacity-100 shadow-sm whitespace-nowrap">
                   {rupiah(item.value)}
                 </span>
 
-                {/* Batang Grafik */}
                 <div
                   style={{ height: `${Math.max(heightPercent, 8)}%` }}
                   className="w-full rounded-t-xl bg-amber-500 transition-all duration-300 group-hover:bg-amber-600 shadow-sm"
                 />
 
-                {/* Label Tanggal */}
                 <span className="mt-2 text-[10px] font-bold text-stone-500 truncate max-w-full">
                   {item.label}
                 </span>

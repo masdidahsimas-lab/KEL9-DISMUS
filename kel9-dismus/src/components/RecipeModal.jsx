@@ -1,6 +1,17 @@
 import React, { useState, useEffect } from "react";
-import { X, Plus, Trash2, Save, LoaderCircle, Boxes, Calculator, RotateCcw } from "lucide-react";
+import {
+  X,
+  Plus,
+  Trash2,
+  Save,
+  LoaderCircle,
+  Boxes,
+  Calculator,
+  RotateCcw,
+  AlertTriangle,
+} from "lucide-react";
 import Swal from "sweetalert2";
+import { supabase } from "../lib/supabase";
 import { saveMenuRecipe, clearMenuRecipe } from "../services/recipeService";
 
 export default function RecipeModal({
@@ -10,12 +21,48 @@ export default function RecipeModal({
   onClose,
   onRefresh,
 }) {
+  const [liveMaterials, setLiveMaterials] = useState(rawMaterials);
   const [recipe, setRecipe] = useState([]);
   const [pcsPerAdonan, setPcsPerAdonan] = useState("");
   const [pcsPerPorsi, setPcsPerPorsi] = useState("");
   const [potongStok, setPotongStok] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [clearing, setClearing] = useState(false);
+
+  useEffect(() => {
+    setLiveMaterials(rawMaterials);
+  }, [rawMaterials]);
+
+  // Realtime sinkronisasi stok bahan baku saat modal terbuka
+  useEffect(() => {
+    if (!isOpen || !supabase) return;
+
+    const refreshLiveMaterials = async () => {
+      const { data, error } = await supabase
+        .from("bahan_baku")
+        .select("*")
+        .order("nama_bahan", { ascending: true });
+
+      if (!error && data) {
+        setLiveMaterials(data);
+      }
+    };
+
+    refreshLiveMaterials();
+
+    const channel = supabase
+      .channel("recipe-modal-materials-realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "bahan_baku" },
+        () => refreshLiveMaterials()
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [isOpen]);
 
   useEffect(() => {
     if (menu) {
@@ -38,15 +85,30 @@ export default function RecipeModal({
   if (!isOpen || !menu) return null;
 
   const handleAddRow = () => {
-    const availableMaterial = rawMaterials.find(
+    const unselectedMaterials = liveMaterials.filter(
       (m) => !recipe.some((r) => Number(r.bahan_id) === Number(m.id))
     );
 
-    if (!availableMaterial) {
+    if (unselectedMaterials.length === 0) {
       Swal.fire({
         icon: "warning",
-        title: "Bahan Habis",
+        title: "Bahan Sudah Lengkap",
         text: "Semua bahan baku dari stok sudah dimasukkan ke dalam resep menu ini.",
+        confirmButtonColor: "#d97706",
+      });
+      return;
+    }
+
+    // Prioritaskan bahan baku yang stoknya > 0
+    const availableInStock = unselectedMaterials.find(
+      (m) => Number(m.jumlah_stok ?? 0) > 0
+    );
+
+    if (!availableInStock) {
+      Swal.fire({
+        icon: "warning",
+        title: "Stok Bahan Baku Habis (0)",
+        text: "Semua sisa bahan baku memiliki stok 0. Silakan isi stok terlebih dahulu di menu Stok Bahan Baku.",
         confirmButtonColor: "#d97706",
       });
       return;
@@ -54,7 +116,7 @@ export default function RecipeModal({
 
     setRecipe([
       ...recipe,
-      { bahan_id: availableMaterial.id, jumlah_dibutuhkan: 1 },
+      { bahan_id: availableInStock.id, jumlah_dibutuhkan: 1 },
     ]);
   };
 
@@ -118,7 +180,7 @@ export default function RecipeModal({
     if (!pcsPerAdonan || Number(pcsPerAdonan) <= 0) {
       Swal.fire({
         icon: "warning",
-        title: "Input Belum Lengkap",
+        title: "Kolom Wajib Diisi",
         text: "Masukkan jumlah pcs yang dihasilkan dalam 1 adonan.",
         confirmButtonColor: "#d97706",
       });
@@ -128,11 +190,82 @@ export default function RecipeModal({
     if (!pcsPerPorsi || Number(pcsPerPorsi) <= 0) {
       Swal.fire({
         icon: "warning",
-        title: "Input Belum Lengkap",
+        title: "Kolom Wajib Diisi",
         text: "Masukkan jumlah pcs yang dijual dalam 1 porsi.",
         confirmButtonColor: "#d97706",
       });
       return;
+    }
+
+    if (recipe.length === 0) {
+      Swal.fire({
+        icon: "warning",
+        title: "Bahan Baku Wajib Diisi",
+        text: "Tambahkan minimal 1 bahan baku ke dalam resep menu ini.",
+        confirmButtonColor: "#d97706",
+      });
+      return;
+    }
+
+    const hasInvalidIngredient = recipe.some(
+      (item) => !item.bahan_id || Number(item.jumlah_dibutuhkan) <= 0
+    );
+    if (hasInvalidIngredient) {
+      Swal.fire({
+        icon: "warning",
+        title: "Takaran Wajib Diisi",
+        text: "Pastikan setiap bahan baku memiliki takaran jumlah lebih dari 0.",
+        confirmButtonColor: "#d97706",
+      });
+      return;
+    }
+
+    // Validasi: Blokir penyimpanan jika ada bahan baku dengan stok 0
+    const zeroStockMaterials = recipe
+      .map((item) =>
+        liveMaterials.find((m) => Number(m.id) === Number(item.bahan_id))
+      )
+      .filter((m) => !m || Number(m.jumlah_stok ?? 0) <= 0);
+
+    if (zeroStockMaterials.length > 0) {
+      const materialNames = zeroStockMaterials
+        .map((m) => m?.nama_bahan || "Bahan baku")
+        .join(", ");
+
+      Swal.fire({
+        icon: "warning",
+        title: "Stok Bahan Baku Kosong (0)!",
+        text: `Bahan "${materialNames}" memiliki stok 0 sehingga resep tidak dapat disimpan. Silakan isi stok di gudang terlebih dahulu atau hapus bahan tersebut.`,
+        confirmButtonColor: "#d97706",
+      });
+      return;
+    }
+
+    // Validasi: Blokir penyimpanan jika potongStok aktif tetapi stok kurang dari takaran
+    if (potongStok) {
+      const insufficientItem = recipe.find((item) => {
+        const mat = liveMaterials.find(
+          (m) => Number(m.id) === Number(item.bahan_id)
+        );
+        return (
+          mat &&
+          Number(item.jumlah_dibutuhkan || 0) > Number(mat.jumlah_stok ?? 0)
+        );
+      });
+
+      if (insufficientItem) {
+        const mat = liveMaterials.find(
+          (m) => Number(m.id) === Number(insufficientItem.bahan_id)
+        );
+
+        Swal.fire({
+          icon: "warning",
+          title: "Stok Bahan Tidak Mencukupi!",
+          text: `Stok "${mat.nama_bahan}" hanya tersisa ${mat.jumlah_stok} ${mat.satuan}, kurang dari kebutuhan ${insufficientItem.jumlah_dibutuhkan} ${mat.satuan}.`,
+          confirmButtonColor: "#d97706",
+        });
+        return;
+      }
     }
 
     setSubmitting(true);
@@ -191,6 +324,7 @@ export default function RecipeModal({
             </p>
           </div>
           <button
+            type="button"
             onClick={onClose}
             className="rounded-full p-2 text-stone-400 hover:bg-stone-100 transition"
           >
@@ -222,7 +356,7 @@ export default function RecipeModal({
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-[11px] font-bold text-stone-600 block mb-1">
-                  Hasil 1 Adonan (pcs):
+                  Hasil 1 Adonan (pcs) <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="number"
@@ -237,7 +371,7 @@ export default function RecipeModal({
 
               <div>
                 <label className="text-[11px] font-bold text-stone-600 block mb-1">
-                  Isi 1 Porsi (pcs):
+                  Isi 1 Porsi (pcs) <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="number"
@@ -253,7 +387,8 @@ export default function RecipeModal({
 
             {pcsPerAdonan && pcsPerPorsi && (
               <p className="text-[11px] text-amber-700 font-medium">
-                💡 1 Adonan ({pcsPerAdonan} pcs) = <strong>{estimasiPorsiPerAdonan} Porsi</strong>
+                💡 1 Adonan ({pcsPerAdonan} pcs) ={" "}
+                <strong>{estimasiPorsiPerAdonan} Porsi</strong>
               </p>
             )}
           </div>
@@ -267,80 +402,140 @@ export default function RecipeModal({
               onChange={(e) => setPotongStok(e.target.checked)}
               className="h-4 w-4 rounded border-stone-300 text-amber-600 focus:ring-amber-500"
             />
-            <label htmlFor="potongStok" className="text-xs font-bold text-stone-700 cursor-pointer">
+            <label
+              htmlFor="potongStok"
+              className="text-xs font-bold text-stone-700 cursor-pointer"
+            >
               Potong stok bahan baku di gudang otomatis saat disimpan
             </label>
           </div>
 
-          <p className="text-xs text-stone-500">
+          <p className="text-xs font-semibold text-stone-600">
             {pcsPerAdonan
               ? `Takaran bahan baku untuk 1 Adonan (${pcsPerAdonan} pcs):`
-              : "Takaran bahan baku untuk 1 Adonan:"}
+              : "Takaran bahan baku untuk 1 Adonan:"}{" "}
+            <span className="text-rose-500">*</span>
           </p>
 
           {/* DAFTAR BAHAN BAKU */}
-          <div className="max-h-48 space-y-3 overflow-y-auto pr-1">
+          <div className="max-h-52 space-y-3 overflow-y-auto pr-1">
             {recipe.length === 0 ? (
               <div className="py-6 text-center text-xs text-stone-400 border border-dashed border-stone-200 rounded-2xl">
-                <Boxes className="mx-auto mb-2 opacity-40 text-amber-600" size={28} />
-                Belum ada bahan baku yang dihubungkan.
+                <Boxes
+                  className="mx-auto mb-2 opacity-40 text-amber-600"
+                  size={28}
+                />
+                Belum ada bahan baku (wajib tambah minimal 1 bahan baku).
               </div>
             ) : (
               recipe.map((item, index) => {
-                const selectedMaterial = rawMaterials.find(
+                const selectedMaterial = liveMaterials.find(
                   (m) => Number(m.id) === Number(item.bahan_id)
                 );
+                const currentStock = Number(selectedMaterial?.jumlah_stok ?? 0);
+                const neededQty = Number(item.jumlah_dibutuhkan || 0);
+                const isZeroStock = !selectedMaterial || currentStock <= 0;
+                const isInsufficient =
+                  potongStok && !isZeroStock && neededQty > currentStock;
+                const hasStockWarning = isZeroStock || isInsufficient;
 
                 return (
                   <div
                     key={index}
-                    className="flex items-center gap-2 rounded-2xl border border-stone-200 p-3 bg-stone-50/50"
+                    className={`rounded-2xl border p-3 transition ${
+                      hasStockWarning
+                        ? "border-rose-300 bg-rose-50/70"
+                        : "border-stone-200 bg-stone-50/50"
+                    }`}
                   >
-                    <div className="flex-1">
-                      <select
-                        value={item.bahan_id}
-                        onChange={(e) =>
-                          handleItemChange(index, "bahan_id", e.target.value)
-                        }
-                        className="w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs font-bold text-stone-700 outline-none focus:border-amber-500"
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1">
+                        <select
+                          required
+                          value={item.bahan_id}
+                          onChange={(e) =>
+                            handleItemChange(index, "bahan_id", e.target.value)
+                          }
+                          className={`w-full rounded-xl border bg-white px-3 py-2 text-xs font-bold outline-none ${
+                            hasStockWarning
+                              ? "border-rose-300 text-rose-700 focus:border-rose-500"
+                              : "border-stone-200 text-stone-700 focus:border-amber-500"
+                          }`}
+                        >
+                          {liveMaterials.map((m) => {
+                            const matStock = Number(m.jumlah_stok ?? 0);
+                            const isSelected =
+                              Number(m.id) === Number(item.bahan_id);
+                            return (
+                              <option
+                                key={m.id}
+                                value={m.id}
+                                disabled={matStock <= 0 && !isSelected}
+                              >
+                                {m.nama_bahan} (Stok: {matStock} {m.satuan}
+                                {matStock <= 0 ? " - Habis" : ""})
+                              </option>
+                            );
+                          })}
+                        </select>
+                      </div>
+
+                      <div className="w-28 flex items-center gap-1">
+                        <input
+                          type="number"
+                          min="0.01"
+                          step="any"
+                          required
+                          value={item.jumlah_dibutuhkan}
+                          onChange={(e) =>
+                            handleItemChange(
+                              index,
+                              "jumlah_dibutuhkan",
+                              e.target.value
+                            )
+                          }
+                          className={`w-full rounded-xl border bg-white px-3 py-2 text-xs font-bold text-center outline-none ${
+                            hasStockWarning
+                              ? "border-rose-300 text-rose-700 focus:border-rose-500"
+                              : "border-stone-200 text-stone-800 focus:border-amber-500"
+                          }`}
+                          placeholder="Butuh"
+                        />
+                        <span className="text-[10px] font-semibold text-stone-500">
+                          {selectedMaterial?.satuan || "pcs"}
+                        </span>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveRow(index)}
+                        className="rounded-xl p-2 text-rose-500 hover:bg-rose-100 transition"
                       >
-                        {rawMaterials.map((m) => (
-                          <option key={m.id} value={m.id}>
-                            {m.nama_bahan} (Stok: {m.jumlah_stok} {m.satuan})
-                          </option>
-                        ))}
-                      </select>
+                        <Trash2 size={16} />
+                      </button>
                     </div>
 
-                    <div className="w-28 flex items-center gap-1">
-                      <input
-                        type="number"
-                        min="0.01"
-                        step="any"
-                        required
-                        value={item.jumlah_dibutuhkan}
-                        onChange={(e) =>
-                          handleItemChange(
-                            index,
-                            "jumlah_dibutuhkan",
-                            e.target.value
-                          )
-                        }
-                        className="w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs font-bold text-stone-800 text-center outline-none focus:border-amber-500"
-                        placeholder="Butuh"
-                      />
-                      <span className="text-[10px] font-semibold text-stone-500">
-                        {selectedMaterial?.satuan || "pcs"}
-                      </span>
-                    </div>
+                    {isZeroStock && (
+                      <p className="mt-2 flex items-center gap-1.5 text-[11px] font-bold text-rose-600">
+                        <AlertTriangle size={13} className="shrink-0" />
+                        <span>
+                          Stok {selectedMaterial?.nama_bahan || "bahan"} sedang 0{" "}
+                          {selectedMaterial?.satuan || ""}. Resep tidak dapat
+                          disimpan sebelum stok diisi.
+                        </span>
+                      </p>
+                    )}
 
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveRow(index)}
-                      className="rounded-xl p-2 text-rose-500 hover:bg-rose-50 transition"
-                    >
-                      <Trash2 size={16} />
-                    </button>
+                    {isInsufficient && (
+                      <p className="mt-2 flex items-center gap-1.5 text-[11px] font-bold text-rose-600">
+                        <AlertTriangle size={13} className="shrink-0" />
+                        <span>
+                          Stok {selectedMaterial?.nama_bahan} hanya{" "}
+                          {currentStock} {selectedMaterial?.satuan} (kurang dari{" "}
+                          {neededQty} {selectedMaterial?.satuan}).
+                        </span>
+                      </p>
+                    )}
                   </div>
                 );
               })

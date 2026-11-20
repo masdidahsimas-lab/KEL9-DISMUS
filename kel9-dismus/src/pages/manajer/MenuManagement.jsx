@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { Boxes, Utensils, RotateCcw } from "lucide-react";
 import Swal from "sweetalert2";
-import { getMenusWithPortions, clearMenuRecipe } from "../../services/recipeService";
+import {
+  getMenusWithPortions,
+  clearMenuRecipe,
+} from "../../services/recipeService";
 import { supabase } from "../../lib/supabase";
 import { rupiah } from "../../utils/format";
 import RecipeModal from "../../components/RecipeModal";
@@ -34,8 +37,33 @@ export default function MenuManagement({ onRefresh }) {
     }
   };
 
+  // Load awal & Realtime Subscription Supabase untuk stok bahan baku & resep
   useEffect(() => {
     fetchData();
+
+    const channel = supabase
+      .channel("menu-management-realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "stok_bahan_baku" },
+        () => fetchData()
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "menu_bahan_baku" },
+        () => fetchData()
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "menu" },
+        () => fetchData()
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const openRecipeModal = (menu) => {
@@ -81,7 +109,9 @@ export default function MenuManagement({ onRefresh }) {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-black text-stone-800">Resep Menu & Stok Porsi</h1>
+          <h1 className="text-2xl font-black text-stone-800">
+            Resep Menu & Stok Porsi
+          </h1>
           <p className="text-xs text-stone-500">
             Stok porsi dihitung otomatis berdasarkan ketersediaan bahan baku paling minim di gudang.
           </p>
@@ -137,7 +167,9 @@ export default function MenuManagement({ onRefresh }) {
                 <div className="mt-4 rounded-2xl bg-stone-50 p-3.5 border border-stone-100">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-[10px] font-extrabold uppercase tracking-wider text-stone-400">
-                      {pcsAdonan ? `Bahan 1 Adonan (${pcsAdonan} pcs):` : "Resep Bahan Baku:"}
+                      {pcsAdonan
+                        ? `Bahan 1 Adonan (${pcsAdonan} pcs):`
+                        : "Resep Bahan Baku:"}
                     </span>
                     {pcsPorsi && (
                       <span className="text-[10px] font-bold text-amber-700 bg-amber-100/60 px-2 py-0.5 rounded-md">
@@ -158,10 +190,13 @@ export default function MenuManagement({ onRefresh }) {
                           className="flex items-center justify-between text-xs text-stone-600 font-medium"
                         >
                           <span className="truncate">
-                            • {item.stok_bahan_baku?.nama_bahan || `Bahan #${item.bahan_id}`}
+                            •{" "}
+                            {item.stok_bahan_baku?.nama_bahan ||
+                              `Bahan #${item.bahan_id}`}
                           </span>
                           <span className="font-bold text-stone-800 shrink-0 ml-2">
-                            {item.jumlah_dibutuhkan} {item.stok_bahan_baku?.satuan || ""}
+                            {item.jumlah_dibutuhkan}{" "}
+                            {item.stok_bahan_baku?.satuan || ""}
                           </span>
                         </li>
                       ))}

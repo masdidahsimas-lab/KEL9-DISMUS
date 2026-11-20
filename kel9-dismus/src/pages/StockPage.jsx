@@ -6,6 +6,7 @@ import Modal, { Button, Field, inputClass } from "../components/Modal";
 import EmptyState from "../components/EmptyState";
 import { validateInput, VALID_STOCK_UNITS } from "../utils/validation";
 import { deleteStock } from "../services/stockService";
+import { supabase } from "../lib/supabase";
 
 const isLowStock = (jumlah, satuan) => {
   const s = (satuan || "").toLowerCase();
@@ -15,7 +16,13 @@ const isLowStock = (jumlah, satuan) => {
   return jumlah <= 5;
 };
 
-export default function StockPage({ stock, onSave, onDelete, onRefresh, onError }) {
+export default function StockPage({
+  stock,
+  onSave,
+  onDelete,
+  onRefresh,
+  onError,
+}) {
   const [modal, setModal] = useState(false);
   const [edit, setEdit] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -29,9 +36,24 @@ export default function StockPage({ stock, onSave, onDelete, onRefresh, onError 
 
   const [fieldErrors, setFieldErrors] = useState({});
 
-  // Auto Refresh data stok saat halaman StockPage dibuka
+  // Auto Refresh & Realtime listener data stok
   useEffect(() => {
     onRefresh?.();
+
+    const channel = supabase
+      .channel("stock-realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public" },
+        () => {
+          onRefresh?.();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   function open(item = null) {
@@ -255,9 +277,7 @@ export default function StockPage({ stock, onSave, onDelete, onRefresh, onError 
                   </span>
                 </div>
 
-                <h3 className="mt-4 text-lg font-extrabold">
-                  {s.nama_bahan}
-                </h3>
+                <h3 className="mt-4 text-lg font-extrabold">{s.nama_bahan}</h3>
 
                 <p className="mt-3 text-sm text-stone-500">Jumlah stok</p>
 
@@ -302,9 +322,10 @@ export default function StockPage({ stock, onSave, onDelete, onRefresh, onError 
           title={edit ? "Perbarui Stok" : "Tambah Bahan Baku"}
           onClose={() => !saving && setModal(false)}
         >
-          <form className="space-y-4" onSubmit={submit} noValidate>
+          <form className="space-y-4" onSubmit={submit}>
             <Field label="Nama bahan">
               <input
+                required
                 className={getInputStyle("nama_bahan")}
                 type="text"
                 value={form.nama_bahan}
@@ -326,6 +347,7 @@ export default function StockPage({ stock, onSave, onDelete, onRefresh, onError 
 
             <Field label="Jumlah stok">
               <input
+                required
                 className={getInputStyle("jumlah_stok")}
                 type="number"
                 min="0"
@@ -349,6 +371,7 @@ export default function StockPage({ stock, onSave, onDelete, onRefresh, onError 
 
             <Field label="Satuan">
               <select
+                required
                 className={getInputStyle("satuan")}
                 value={form.satuan}
                 onChange={(e) => {
