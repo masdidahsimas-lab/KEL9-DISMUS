@@ -7,25 +7,62 @@ import {
   ShieldCheck,
   LoaderCircle,
   ShieldAlert,
+  X,
 } from "lucide-react";
 import Swal from "sweetalert2";
 
+import { supabase } from "../../lib/supabase";
 import { addUserByManager } from "../../services/authService";
 import { validateInput, VALID_EMPLOYEE_ROLES } from "../../utils/validation";
 
-export default function AddEmployee() {
+export default function AddEmployee({ isOpen, onClose, onSuccess }) {
   const [formData, setFormData] = useState({
     fullName: "",
     email: "",
     password: "",
-    role: "karyawan", // Default role karyawan
+    role: "karyawan",
   });
   const [loading, setLoading] = useState(false);
+
+  if (!isOpen) return null;
+
+  const handleClose = () => {
+    if (loading) return;
+    setFormData({ fullName: "", email: "", password: "", role: "karyawan" });
+    onClose?.();
+  };
+
+  // Sinkronkan nama & email ke tabel profiles/users di Supabase
+  const syncProfileData = async (userId, email, fullName, role) => {
+    if (!userId) return;
+
+    const candidateTables = ["profiles", "users"];
+    for (const table of candidateTables) {
+      const { data: sampleRows, error } = await supabase
+        .from(table)
+        .select("*")
+        .limit(1);
+
+      if (!error) {
+        const cols = sampleRows?.[0] ? Object.keys(sampleRows[0]) : [];
+        const payload = { id: userId };
+
+        if (cols.length === 0 || cols.includes("email")) payload.email = email;
+        if (cols.length === 0 || cols.includes("role")) payload.role = role;
+        if (cols.includes("full_name")) payload.full_name = fullName;
+        if (cols.includes("nama")) payload.nama = fullName;
+        if (cols.includes("nama_lengkap")) payload.nama_lengkap = fullName;
+        if (cols.includes("name")) payload.name = fullName;
+
+        await supabase.from(table).upsert(payload, { onConflict: "id" });
+        break;
+      }
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // 1. Validasi Nama Lengkap
     const fullNameError = validateInput({
       field: "Nama lengkap",
       value: formData.fullName,
@@ -45,7 +82,6 @@ export default function AddEmployee() {
       return;
     }
 
-    // 2. Validasi Email
     const emailError = validateInput({
       field: "Email karyawan",
       value: formData.email,
@@ -63,7 +99,6 @@ export default function AddEmployee() {
       return;
     }
 
-    // 3. Validasi Password
     const passwordError = validateInput({
       field: "Password",
       value: formData.password,
@@ -82,7 +117,6 @@ export default function AddEmployee() {
       return;
     }
 
-    // 4. Validasi Role
     const roleError = validateInput({
       field: "Role",
       value: formData.role,
@@ -102,17 +136,19 @@ export default function AddEmployee() {
 
     setLoading(true);
 
-    // Memanggil API addUserByManager dari authService.js (Terisolasi)
+    const trimmedEmail = formData.email.trim();
+    const trimmedName = formData.fullName.trim();
+    const selectedRole = formData.role;
+
     const { data, error } = await addUserByManager(
-      formData.email,
+      trimmedEmail,
       formData.password,
-      formData.fullName,
-      formData.role
+      trimmedName,
+      selectedRole
     );
 
-    setLoading(false);
-
     if (error) {
+      setLoading(false);
       Swal.fire({
         icon: "error",
         title: "Gagal Menambah Akun",
@@ -122,45 +158,63 @@ export default function AddEmployee() {
       return;
     }
 
-    // SweetAlert2 Sukses
+    const createdUser = data?.user || data;
+    await syncProfileData(createdUser?.id, trimmedEmail, trimmedName, selectedRole);
+
+    setLoading(false);
+    setFormData({ fullName: "", email: "", password: "", role: "karyawan" });
+    onClose?.();
+    onSuccess?.(data);
+
     Swal.fire({
       icon: "success",
       title: "Karyawan Berhasil Ditambahkan!",
       html: `
         <div style="font-size: 13px; color: #44403c;">
-          Akun <strong style="color: #d97706;">${formData.role}</strong> untuk 
-          <strong>${formData.fullName}</strong> (${formData.email}) telah terdaftar di sistem.
+          Akun <strong style="color: #d97706;">${selectedRole}</strong> untuk 
+          <strong>${trimmedName}</strong> (${trimmedEmail}) telah terdaftar di sistem.
         </div>
       `,
       confirmButtonColor: "#10b981",
       confirmButtonText: "Selesai",
     });
-
-    // Reset Form
-    setFormData({ fullName: "", email: "", password: "", role: "karyawan" });
   };
 
   return (
-    <div className="mx-auto max-w-lg px-4 py-6 sm:px-6">
-      <div className="rounded-3xl border border-stone-200/80 bg-white p-6 shadow-sm sm:p-8">
-        {/* Header Form */}
-        <div className="mb-6 text-center">
-          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-100 text-amber-700">
-            <UserPlus size={24} />
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
+      <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-3xl border border-stone-200/80 bg-white p-6 shadow-2xl sm:p-7">
+        {/* Header Modal */}
+        <div className="flex items-start justify-between gap-3 border-b border-stone-100 pb-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-100 text-amber-700">
+              <UserPlus size={22} />
+            </div>
+            <div>
+              <h2 className="text-lg font-black text-stone-800 sm:text-xl">
+                Tambah Karyawan / User Baru
+              </h2>
+              <p className="text-xs text-stone-500">
+                Daftarkan staf atau manajer operasional baru ke DimsumKu.
+              </p>
+            </div>
           </div>
-          <h2 className="text-xl font-black text-stone-800 sm:text-2xl">
-            Tambah Karyawan / User Baru
-          </h2>
-          <p className="mt-1 text-xs text-stone-500 sm:text-sm">
-            Daftarkan staf atau manajer operasional baru ke sistem DimsumKu.
-          </p>
+
+          <button
+            type="button"
+            disabled={loading}
+            onClick={handleClose}
+            aria-label="Tutup modal"
+            className="rounded-xl p-1.5 text-stone-400 transition hover:bg-stone-100 hover:text-stone-600 disabled:opacity-50"
+          >
+            <X size={20} />
+          </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="mt-5 space-y-4">
           {/* Input Nama Lengkap */}
           <div>
             <label className="mb-1 block text-xs font-semibold text-stone-600">
-              Nama Lengkap
+              Nama Lengkap <span className="text-rose-500">*</span>
             </label>
             <div className="relative">
               <User
@@ -183,7 +237,7 @@ export default function AddEmployee() {
           {/* Input Email Karyawan */}
           <div>
             <label className="mb-1 block text-xs font-semibold text-stone-600">
-              Email Karyawan
+              Email Karyawan <span className="text-rose-500">*</span>
             </label>
             <div className="relative">
               <Mail
@@ -206,7 +260,7 @@ export default function AddEmployee() {
           {/* Input Password */}
           <div>
             <label className="mb-1 block text-xs font-semibold text-stone-600">
-              Password Initial
+              Password Initial <span className="text-rose-500">*</span>
             </label>
             <div className="relative">
               <Lock
@@ -216,6 +270,7 @@ export default function AddEmployee() {
               <input
                 type="password"
                 required
+                minLength={6}
                 placeholder="Minimal 6 karakter"
                 className="w-full rounded-2xl border border-stone-200 py-2.5 pl-10 pr-4 text-sm outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
                 value={formData.password}
@@ -229,7 +284,7 @@ export default function AddEmployee() {
           {/* Input Select Role */}
           <div>
             <label className="mb-1 block text-xs font-semibold text-stone-600">
-              Pilih Role Akses
+              Pilih Role Akses <span className="text-rose-500">*</span>
             </label>
             <div className="relative">
               <ShieldCheck
@@ -237,6 +292,7 @@ export default function AddEmployee() {
                 size={16}
               />
               <select
+                required
                 className="w-full rounded-2xl border border-stone-200 bg-white py-2.5 pl-10 pr-4 text-sm outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
                 value={formData.role}
                 onChange={(e) =>
@@ -250,7 +306,7 @@ export default function AddEmployee() {
           </div>
 
           {/* Info Banner Keamanan Sesi */}
-          <div className="mt-2 flex items-start gap-2 rounded-2xl border border-amber-200/60 bg-amber-50/60 p-3 text-[11px] text-amber-800">
+          <div className="flex items-start gap-2 rounded-2xl border border-amber-200/60 bg-amber-50/60 p-3 text-[11px] text-amber-800">
             <ShieldAlert size={16} className="mt-0.5 shrink-0 text-amber-600" />
             <span>
               <strong>Terisolasi Aman:</strong> Menambahkan akun karyawan tidak
@@ -258,21 +314,31 @@ export default function AddEmployee() {
             </span>
           </div>
 
-          {/* Submit Button */}
-          <button
-            type="submit"
-            disabled={loading}
-            className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-amber-600 py-3.5 text-sm font-bold text-white shadow-md transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {loading ? (
-              <>
-                <LoaderCircle className="animate-spin" size={18} />
-                Memproses Pendaftaran...
-              </>
-            ) : (
-              "Simpan Karyawan Baru"
-            )}
-          </button>
+          {/* Action Buttons */}
+          <div className="flex justify-end gap-2.5 pt-2">
+            <button
+              type="button"
+              disabled={loading}
+              onClick={handleClose}
+              className="rounded-2xl border border-stone-200 px-5 py-3 text-xs font-bold text-stone-600 transition hover:bg-stone-50 disabled:opacity-50"
+            >
+              Batal
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex items-center justify-center gap-2 rounded-2xl bg-amber-600 px-6 py-3 text-xs font-bold text-white shadow-md transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {loading ? (
+                <>
+                  <LoaderCircle className="animate-spin" size={16} />
+                  Memproses...
+                </>
+              ) : (
+                "Simpan Karyawan Baru"
+              )}
+            </button>
+          </div>
         </form>
       </div>
     </div>

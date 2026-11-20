@@ -16,11 +16,52 @@ export default function AuthModal({ open, onClose, onSuccess, onError }) {
 
   if (!open) return null;
 
+  // Validasi realtime per field
+  const validateSingleField = (name, value) => {
+    if (name === "fullName" && isRegister) {
+      return validateInput({
+        field: "Nama lengkap",
+        value,
+        required: true,
+        type: "string",
+        minLength: 2,
+        format: /^[A-Za-zÀ-ÖØ-öø-ÿ\s.'-]+$/,
+      });
+    }
+    if (name === "email") {
+      return validateInput({
+        field: "Email",
+        value,
+        required: true,
+        type: "email",
+      });
+    }
+    if (name === "password") {
+      return validateInput({
+        field: "Password",
+        value,
+        required: true,
+        type: "string",
+        minLength: 6,
+      });
+    }
+    return null;
+  };
+
+  const handleFieldChange = (name, value) => {
+    if (name === "fullName") setFullName(value);
+    if (name === "email") setEmail(value);
+    if (name === "password") setPassword(value);
+
+    const err = validateSingleField(name, value);
+    setFieldErrors((prev) => ({ ...prev, [name]: err || null }));
+  };
+
   // Handler Login dengan Google
   const handleGoogleLogin = async () => {
     setGoogleLoading(true);
     const { error } = await loginWithGoogle();
-    
+
     if (error) {
       setGoogleLoading(false);
       Swal.fire({
@@ -39,39 +80,21 @@ export default function AuthModal({ open, onClose, onSuccess, onError }) {
     const errors = {};
 
     if (isRegister) {
-      const fullNameError = validateInput({
-        field: "Nama lengkap",
-        value: fullName,
-        required: true,
-        type: "string",
-        minLength: 2,
-        format: /^[A-Za-zÀ-ÖØ-öø-ÿ\s.'-]+$/,
-      });
+      const fullNameError = validateSingleField("fullName", fullName);
       if (fullNameError) errors.fullName = fullNameError;
     }
 
-    const emailError = validateInput({
-      field: "Email",
-      value: email,
-      required: true,
-      type: "email",
-    });
+    const emailError = validateSingleField("email", email);
     if (emailError) errors.email = emailError;
 
-    const passwordError = validateInput({
-      field: "Password",
-      value: password,
-      required: true,
-      type: "string",
-      minLength: 6,
-    });
+    const passwordError = validateSingleField("password", password);
     if (passwordError) errors.password = passwordError;
 
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
       Swal.fire({
-        icon: "error",
-        title: "Input Tidak Valid",
+        icon: "warning",
+        title: "Form Wajib Diisi Lengkap",
         text: Object.values(errors)[0],
         confirmButtonColor: "#d97706",
       });
@@ -181,8 +204,8 @@ export default function AuthModal({ open, onClose, onSuccess, onError }) {
 
           <p className="mt-1 text-xs text-stone-500">
             {isRegister
-              ? "Daftarkan akun Anda untuk mulai memesan."
-              : "Masuk untuk melanjutkan ke akun Anda."}
+              ? "Daftarkan akun Anda untuk mulai memesan. Semua kolom wajib diisi."
+              : "Masuk untuk melanjutkan ke akun Anda. Semua kolom wajib diisi."}
           </p>
         </div>
 
@@ -226,71 +249,79 @@ export default function AuthModal({ open, onClose, onSuccess, onError }) {
           </span>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+        <form onSubmit={handleSubmit} className="space-y-4">
           {isRegister && (
             <div>
               <label className="mb-1 block text-xs font-semibold text-stone-600">
-                Nama Lengkap
+                Nama Lengkap <span className="text-rose-500">*</span>
               </label>
               <div className="relative">
                 <User className="absolute left-3 top-2.5 text-stone-400" size={18} />
                 <input
                   type="text"
+                  required
                   value={fullName}
-                  onChange={(e) => {
-                    setFullName(e.target.value);
-                    if (fieldErrors.fullName) setFieldErrors({ ...fieldErrors, fullName: null });
-                  }}
+                  onChange={(e) => handleFieldChange("fullName", e.target.value)}
+                  onBlur={(e) => handleFieldChange("fullName", e.target.value)}
                   placeholder="Nama Anda"
                   autoComplete="name"
                   className={getInputStyle("fullName")}
                 />
               </div>
               {fieldErrors.fullName && (
-                <p className="mt-1 text-xs font-semibold text-red-600">{fieldErrors.fullName}</p>
+                <p className="mt-1 text-xs font-semibold text-red-600">
+                  {fieldErrors.fullName}
+                </p>
               )}
             </div>
           )}
 
           <div>
-            <label className="mb-1 block text-xs font-semibold text-stone-600">Email</label>
+            <label className="mb-1 block text-xs font-semibold text-stone-600">
+              Email <span className="text-rose-500">*</span>
+            </label>
             <div className="relative">
               <Mail className="absolute left-3 top-2.5 text-stone-400" size={18} />
               <input
                 type="email"
+                required
                 value={email}
-                onChange={(e) => {
-                  setEmail(e.target.value);
-                  if (fieldErrors.email) setFieldErrors({ ...fieldErrors, email: null });
-                }}
+                onChange={(e) => handleFieldChange("email", e.target.value)}
+                onBlur={(e) => handleFieldChange("email", e.target.value)}
                 placeholder="nama@email.com"
                 autoComplete="email"
                 className={getInputStyle("email")}
               />
             </div>
             {fieldErrors.email && (
-              <p className="mt-1 text-xs font-semibold text-red-600">{fieldErrors.email}</p>
+              <p className="mt-1 text-xs font-semibold text-red-600">
+                {fieldErrors.email}
+              </p>
             )}
           </div>
 
           <div>
-            <label className="mb-1 block text-xs font-semibold text-stone-600">Password</label>
+            <label className="mb-1 block text-xs font-semibold text-stone-600">
+              Password <span className="text-rose-500">*</span>
+            </label>
             <div className="relative">
               <Lock className="absolute left-3 top-2.5 text-stone-400" size={18} />
               <input
                 type="password"
+                required
+                minLength={6}
                 value={password}
-                onChange={(e) => {
-                  setPassword(e.target.value);
-                  if (fieldErrors.password) setFieldErrors({ ...fieldErrors, password: null });
-                }}
+                onChange={(e) => handleFieldChange("password", e.target.value)}
+                onBlur={(e) => handleFieldChange("password", e.target.value)}
                 placeholder="Minimal 6 karakter"
                 autoComplete={isRegister ? "new-password" : "current-password"}
                 className={getInputStyle("password")}
               />
             </div>
             {fieldErrors.password && (
-              <p className="mt-1 text-xs font-semibold text-red-600">{fieldErrors.password}</p>
+              <p className="mt-1 text-xs font-semibold text-red-600">
+                {fieldErrors.password}
+              </p>
             )}
           </div>
 
